@@ -1,103 +1,78 @@
-import Image from "next/image";
+import Navbar from "@/components/Navbar";
+import ToolGrid from "@/components/ToolGrid";
+import Footer from "@/components/Footer";
+import Link from "next/link";
+import AdSlot from "@/components/ads/AdSlot";
 
-export default function Home() {
+export default function Page() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <>
+      <Navbar />
+      <main>
+        {/* hero */}
+        <section className="relative mx-auto max-w-7xl px-4 pt-16">
+          <div className="max-w-2xl">
+            <p className="text-xs tracking-widest text-[var(--accent)]/90">THE GREMLIN ATE YOUR WORKFLOW</p>
+            <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">
+              The chaos engine for your files.
+            </h1>
+            <p className="mt-4 text-[15px] text-white/70">
+              Convert, compress, trim, merge, rip, hash — fast, private, and free.
+              BitGremlin chews your bits and spits out something better.
+            </p>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/tools" className="btn rounded-md">⚡ Launch Tools</Link>
+              <Link href="/about" className="btn-ghost rounded-md">Learn More</Link>
+            </div>
+          </div>
+
+          {/* subtle cyan sweep */}
+          <div
+            className="pointer-events-none absolute -right-40 -top-24 h-[380px] w-[520px] rounded-full blur-3xl"
+            style={{ background: "radial-gradient(closest-side, rgba(0,255,174,0.15), transparent 70%)" }}
+          />
+        </section>
+
+        {/* ad: below hero (desktop size) */}
+        <div className="mt-10 flex justify-center px-4">
+          <div className="hidden md:block">
+            <AdSlot id="hero-below-1" width={970} height={90} render="adsense" />
+          </div>
+          <div className="md:hidden">
+            <AdSlot id="hero-below-mobile" width={320} height={100} render="adsense" />
+          </div>
+        </div>
+
+        <ToolGrid />
+
+        {/* affiliate/house ad above footer */}
+        <div className="mt-16 flex justify-center px-4">
+          <div className="hidden md:block">
+            <AdSlot
+              id="footer-top-affiliate"
+              width={970}
+              height={90}
+              render="image"
+              imageHref="https://your-affiliate-link"
+              imageSrc="/ads/affiliate-banner-970x90.jpg"
+              imageAlt="Partner"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+          <div className="md:hidden">
+            <AdSlot
+              id="footer-top-affiliate-m"
+              width={300}
+              height={250}
+              render="image"
+              imageHref="https://your-affiliate-link"
+              imageSrc="/ads/affiliate-300x250.jpg"
+              imageAlt="Partner"
+            />
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      <Footer />
+    </>
   );
 }

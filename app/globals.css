@@ -1,26 +1,78 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #080A17;           /* abyss navy */
+  --fg: #E5E5E5;           /* cloud grey */
+  --muted: #9aa0a6;        /* subtle text */
+  --card: #0B0E1F;         /* panels */
+  --border: #101322;       /* hairline borders */
+  --accent: #00FFAE;       /* gremlin cyan */
+  --accent-weak: #00ffae1a;/* 10% alpha */
+  --focus: #9A4DFF;        /* secondary accent */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* subtle grain/noise */
+.bg-noise:before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(transparent 0, rgba(255,255,255,0.015) 100%);
+  background-size: 200px 200px;
+  mix-blend-mode: soft-light;
+  opacity: .35;
+}
+
+/* focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* button primitives */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition;
+  border: 1px solid var(--accent);
+  color: #000;
+  background: var(--accent);
+}
+.btn:hover { filter: brightness(1.06); }
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  background: transparent;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+/* card */
+.card {
+  background: linear-gradient(180deg, var(--card), #0a0c1c);
+  border: 1px solid var(--border);
+}
+
+/* hover neon edge */
+.neon-edge {
+  position: relative;
+}
+.neon-edge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  transition: border-color .18s ease, box-shadow .18s ease;
+  border-radius: 10px;
+}
+.neon-edge:hover::after {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak), 0 0 24px 2px rgba(0,255,174,.15) inset;
 }
