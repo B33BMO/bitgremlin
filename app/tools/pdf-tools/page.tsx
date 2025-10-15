@@ -17,6 +17,8 @@ export default function PDFSuitePage() {
         <TabBtn cur={tab} id="split" setTab={setTab} label="Split / Extract" />
         <TabBtn cur={tab} id="compress" setTab={setTab} label="Compress" />
         <TabBtn cur={tab} id="text" setTab={setTab} label="Extract Text" />
+        <TabBtn cur={tab} id="sign" setTab={setTab} label="Sign" />
+
       </div>
 
       <div className="mt-4 rounded-xl card p-5">
@@ -24,6 +26,7 @@ export default function PDFSuitePage() {
         {tab === "split" && <SplitTool />}
         {tab === "compress" && <CompressTool />}
         {tab === "text" && <TextTool />}
+        {tab === "sign" && <SignTool />}
       </div>
     </main>
   );
@@ -144,6 +147,169 @@ function SplitTool() {
       </div>
       {err && <ErrorBox msg={err} />}
       {url && <a className="btn rounded-md mt-3 inline-block" href={url} download="extracted.pdf">Download extracted.pdf</a>}
+    </>
+  );
+}
+function SignTool() {
+  const [pdf, setPdf] = useState<File | null>(null);
+  const [sigFile, setSigFile] = useState<File | null>(null); // optional: upload signature
+  const [drawMode, setDrawMode] = useState(true);            // draw vs upload
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+
+  const [pages, setPages] = useState("last"); // e.g. "last", "1,3-4", "all"
+  const [pos, setPos] = useState<"br"|"bl"|"tr"|"tl">("br");
+  const [offsetX, setOffsetX] = useState("24");
+  const [offsetY, setOffsetY] = useState("24");
+  const [widthPct, setWidthPct] = useState(30); // % of page width
+  const [addDate, setAddDate] = useState(true);
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawing = useRef(false);
+
+  function clearDraw() {
+    const c = canvasRef.current; if (!c) return;
+    const g = c.getContext("2d")!;
+    g.clearRect(0,0,c.width,c.height);
+    g.fillStyle = "transparent";
+  }
+
+  function getSignatureBlob(): Promise<Blob | null> {
+    if (!drawMode && sigFile) return Promise.resolve(sigFile);
+    const c = canvasRef.current;
+    if (!c) return Promise.resolve(null);
+    return new Promise((res) => c.toBlob(b => res(b), "image/png"));
+  }
+
+  async function run() {
+    if (!pdf) return setErr("Choose a PDF");
+    setBusy(true); setErr(null); setUrl(null);
+    try {
+      const sigBlob = await getSignatureBlob();
+      if (!sigBlob) throw new Error("No signature provided");
+      const fd = new FormData();
+      fd.append("file", pdf);
+      fd.append("sig", sigBlob, "signature.png");
+      fd.append("pages", pages);           // "last" | "all" | "1,3-5"
+      fd.append("pos", pos);               // br/bl/tr/tl
+      fd.append("offsetX", offsetX);
+      fd.append("offsetY", offsetY);
+      fd.append("widthPct", String(widthPct));
+      fd.append("addDate", String(addDate));
+      const res = await fetch("/api/pdf/sign", { method: "POST", body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      setUrl(URL.createObjectURL(blob));
+    } catch (e:any) {
+      setErr(e?.message || "Sign failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <h2 className="text-xl font-medium">Sign PDF</h2>
+      <p className="mt-1 text-white/60">Place a signature on selected pages, at a chosen corner, with offsets.</p>
+
+      <div className="mt-4 grid gap-4">
+        {/* PDF picker */}
+        <div className="flex flex-wrap items-center gap-3">
+          <input type="file" accept="application/pdf" className="hidden" id="pick-pdf"
+                 onChange={(e)=>setPdf(e.target.files?.[0] || null)} />
+          <label htmlFor="pick-pdf" className="btn rounded-md cursor-pointer">Choose PDF</label>
+          {pdf && <span className="text-xs text-white/50 truncate max-w-[16rem]">{pdf.name}</span>}
+        </div>
+
+        {/* signature mode */}
+        <div className="flex items-center gap-3">
+          <label className={`rounded-md border px-3 py-1 text-sm cursor-pointer ${drawMode? "btn": "border-[var(--border)] text-white/70"}`}
+                 onClick={()=>setDrawMode(true)}>Draw</label>
+          <label className={`rounded-md border px-3 py-1 text-sm cursor-pointer ${!drawMode? "btn": "border-[var(--border)] text-white/70"}`}
+                 onClick={()=>setDrawMode(false)}>Upload</label>
+        </div>
+
+        {/* draw */}
+        {drawMode ? (
+          <div className="rounded-xl card p-3">
+            <div className="mb-2 text-sm text-white/70">Draw your signature</div>
+            <canvas
+              ref={canvasRef}
+              width={600}
+              height={180}
+              className="w-full rounded-md bg-white/5 border border-[var(--border)] cursor-crosshair"
+              onMouseDown={(e)=>{ drawing.current=true; const g=canvasRef.current!.getContext("2d")!; g.strokeStyle="#fff"; g.lineWidth=2; g.lineCap="round"; g.beginPath(); g.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY); }}
+              onMouseMove={(e)=>{ if(!drawing.current) return; const g=canvasRef.current!.getContext("2d")!; g.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY); g.stroke(); }}
+              onMouseUp={()=>{ drawing.current=false; }}
+              onMouseLeave={()=>{ drawing.current=false; }}
+            />
+            <div className="mt-2 flex gap-2">
+              <button className="btn-ghost rounded-md" onClick={clearDraw}>Clear</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <input type="file" accept="image/*" className="hidden" id="pick-sig"
+                   onChange={(e)=>setSigFile(e.target.files?.[0] || null)} />
+            <label htmlFor="pick-sig" className="btn rounded-md cursor-pointer">Choose signature image</label>
+            {sigFile && <span className="text-xs text-white/50 truncate max-w-[16rem]">{sigFile.name}</span>}
+          </div>
+        )}
+
+        {/* options */}
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-xs text-white/60">Pages</label>
+            <input value={pages} onChange={(e)=>setPages(e.target.value)}
+                   placeholder="last | all | 1,3-4"
+                   className="mt-1 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]" />
+          </div>
+          <div>
+            <label className="text-xs text-white/60">Position</label>
+            <select value={pos} onChange={(e)=>setPos(e.target.value as any)}
+                    className="mt-1 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]">
+              <option value="br">Bottom-right</option>
+              <option value="bl">Bottom-left</option>
+              <option value="tr">Top-right</option>
+              <option value="tl">Top-left</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-white/60">Offset X (px)</label>
+            <input value={offsetX} onChange={(e)=>setOffsetX(e.target.value.replace(/\D/g,""))}
+                   className="mt-1 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]" />
+          </div>
+          <div>
+            <label className="text-xs text-white/60">Offset Y (px)</label>
+            <input value={offsetY} onChange={(e)=>setOffsetY(e.target.value.replace(/\D/g,""))}
+                   className="mt-1 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs text-white/60 flex items-center justify-between">
+              <span>Signature width (% of page width)</span>
+              <span className="text-white/40">{widthPct}%</span>
+            </label>
+            <input type="range" min={10} max={60} value={widthPct}
+                   onChange={(e)=>setWidthPct(Number(e.target.value))}
+                   className="mt-1 w-full" />
+          </div>
+          <label className="md:col-span-2 flex items-center gap-2 text-sm text-white/80">
+            <input type="checkbox" checked={addDate} onChange={e=>setAddDate(e.target.checked)} />
+            Add date next to signature
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button onClick={run} disabled={busy} className={`rounded-md px-4 py-2 text-sm font-medium border ${busy? "opacity-50 cursor-not-allowed border-[var(--border)] text-white/40":"btn"}`}
+                  style={busy? {} : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }}>
+            {busy ? "Working…" : "Apply Signature"}
+          </button>
+          {url && <a className="btn rounded-md" href={url} download="signed.pdf">Download signed.pdf</a>}
+        </div>
+
+        {err && <div className="rounded-md border border-red-500/30 bg-black/30 p-3 text-sm text-red-300">Error: {err}</div>}
+      </div>
     </>
   );
 }
