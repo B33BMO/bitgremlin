@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-
+/// <reference lib="dom" />
 // env:
 // BG_BACKEND=local | replicate
 // REMBG_URL=http://127.0.0.1:7000   # only if BG_BACKEND=local
@@ -17,8 +17,9 @@ export async function POST(req: NextRequest) {
     }
     const form = await req.formData();
     const file = form.get("image");
-    if (!(file instanceof File)) {
-      return new Response("Missing 'image' file field", { status: 400 });
+    // validate that it's a file-like object
+    if (!file || typeof (file as any).arrayBuffer !== "function") {
+    return new Response("Invalid or missing 'image' file field", { status: 400 });
     }
 
     const backend = process.env.BG_BACKEND || "local";
