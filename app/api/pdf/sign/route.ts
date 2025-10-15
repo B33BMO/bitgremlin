@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit"; // pdf-lib expects default import name 'fontkit'
+import { plainAddPlaceholder } from "@signpdf/placeholder";
+import signer from "node-signpdf";
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
-
-type Pos = "br" | "bl" | "tr" | "tl";
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,71 +15,75 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
 
     const file = form.get("file") as File | null;
-    const sig = form.get("sig") as File | null;
-    if (!file || !sig) return txt(400, "Missing file or signature");
+    const p12 = form.get("p12") as File | null;
+    const pass = String(form.get("pass") || "");
+    const page = Math.max(1, parseInt(String(form.get("page") || "1"), 10));
+    const x = parseInt(String(form.get("x") || "0"), 10);
+    const y = parseInt(String(form.get("y") || "0"), 10);
+    const widthPct = clamp(parseInt(String(form.get("widthPct") || "30"), 10), 5, 90);
+    const text = String(form.get("text") || "").trim();
+    const ttf = form.get("ttf") as File | null;
 
-    const pagesSpec = String(form.get("pages") || "last").trim();
-    const pos = (String(form.get("pos") || "br") as Pos);
-    const offsetX = toInt(form.get("offsetX")) ?? 24;
-    const offsetY = toInt(form.get("offsetY")) ?? 24;
-    const widthPct = clamp(toInt(form.get("widthPct")) ?? 30, 5, 90);
-    const addDate = String(form.get("addDate") || "true") === "true";
+    if (!file || !p12) return txt(400, "Missing PDF or certificate");
+    if (!text) return txt(400, "Missing signature text");
 
-    // Load PDF
-    const srcBuf = Buffer.from(await file.arrayBuffer());
-    const doc = await PDFDocument.load(srcBuf);
+    const pdfBytes = Buffer.from(await file.arrayBuffer());
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    pdfDoc.registerFontkit(fontkit as any);
 
-    // Embed signature image
-    const sigBytes = Buffer.from(await sig.arrayBuffer());
-    const isPng = (sig as any).type?.includes("png") || sigBytes[1] === 0x50; // lazy sniff
-    const sigImg = isPng ? await doc.embedPng(sigBytes) : await doc.embedJpg(sigBytes);
+    // Target page & size
+    const idx = Math.min(pdfDoc.getPageCount(), page) - 1;
+    const pg = pdfDoc.getPage(idx);
+    const { width: pw } = pg.getSize();
 
-    const pageCount = doc.getPageCount();
-    const targets = parsePagesSpec(pagesSpec, pageCount);
-    if (!targets.length) return txt(400, "No target pages resolved");
-
-    // Optional font for date label
-    const font = addDate ? await doc.embedFont(StandardFonts.Helvetica) : null;
-
-    for (const idx of targets) {
-      const page = doc.getPage(idx);
-      const { width: pw, height: ph } = page.getSize();
-
-      const sigW = Math.round((widthPct / 100) * pw);
-      const sigH = Math.round((sigW / sigImg.width) * sigImg.height);
-
-      // anchor calc
-      let x = 0, y = 0;
-      switch (pos) {
-        case "br": x = pw - sigW - offsetX; y = offsetY; break;
-        case "bl": x = offsetX; y = offsetY; break;
-        case "tr": x = pw - sigW - offsetX; y = ph - sigH - offsetY; break;
-        case "tl": x = offsetX; y = ph - sigH - offsetY; break;
-      }
-
-      // draw signature
-      page.drawImage(sigImg, { x, y, width: sigW, height: sigH });
-
-      // add date to the right of the signature (same baseline)
-      if (addDate && font) {
-        const dateStr = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
-        const fontSize = Math.max(10, Math.floor(sigH * 0.22));
-        const pad = Math.max(8, Math.floor(sigH * 0.1));
-        const textX = Math.min(pw - offsetX - 10, x + sigW + pad);
-        const textY = y + Math.floor(sigH * 0.25);
-
-        page.drawText(dateStr, {
-          x: textX,
-          y: textY,
-          size: fontSize,
-          font,
-          color: rgb(1, 1, 1),
-        });
-      }
+    // font: embed custom if provided, else Helvetica
+    let font;
+    if (ttf) {
+      const ttfBytes = Buffer.from(await ttf.arrayBuffer());
+      font = await pdfDoc.embedFont(ttfBytes, { subset: true });
+    } else {
+      // fallback to built-in (not handwritten, but ok if no TTF)
+      font = await pdfDoc.embedStandardFont("Helvetica");
     }
 
-    const bytes = await doc.save();
-    return new Response(new Blob([bytes], { type: "application/pdf" }), {
+    // Appearance sizing
+    const targetWidth = (widthPct / 100) * pw;
+    const size = fitTextToWidth(font, text, targetWidth); // compute a font size
+    const textWidth = font.widthOfTextAtSize(text, size);
+    const textHeight = font.heightAtSize(size);
+
+    // Draw appearance (black text; you can colorize if you want)
+    pg.drawText(text, {
+      x,
+      y,
+      size,
+      font,
+      color: rgb(0, 0, 0),
+    });
+
+    // Build a signature annotation rectangle roughly around text
+    const sigRect = { x, y: y - 2, width: Math.ceil(textWidth) + 4, height: Math.ceil(textHeight) + 6 };
+
+    // Save incremental after appearance (unsigned bytes)
+    let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+
+    // Add a signature placeholder with a widget on chosen page & rect
+    unsignedPdf = plainAddPlaceholder({
+      pdfBuffer: unsignedPdf,
+      reason: "Digitally signed by BitGremlin",
+      location: "Online",
+      signatureLength: 8192, // buffer for PKCS#7
+      pageNumber: page,      // 1-based
+      rect: [sigRect.x, sigRect.y, sigRect.x + sigRect.width, sigRect.y + sigRect.height],
+    });
+
+    // Sign using PKCS#7 from P12/PFX
+    const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
+    const SignPdf = (signer as any).default || (signer as any); // handle CJS/ESM
+    const sp = new SignPdf();
+    const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
+
+    return new Response(new Blob([signedPdf], { type: "application/pdf" }), {
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "no-store",
@@ -86,41 +91,19 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (e: any) {
-    return txt(500, `Sign failed: ${e?.message || e}`);
+    return txt(500, `Signing failed: ${e?.message || e}`);
   }
 }
 
-/* -------- helpers -------- */
+/* ---------- helpers ---------- */
 
-function parsePagesSpec(spec: string, max: number): number[] {
-  const s = spec.toLowerCase().trim();
-  if (s === "all") return Array.from({ length: max }, (_, i) => i);
-  if (s === "last") return [max - 1];
-  const out: number[] = [];
-  for (const part of s.split(",").map(v => v.trim()).filter(Boolean)) {
-    if (part.includes("-")) {
-      const [aStr, bStr] = part.split("-");
-      const a = clamp(parseInt(aStr, 10), 1, max);
-      const b = clamp(parseInt(bStr, 10), 1, max);
-      const start = Math.min(a, b);
-      const end = Math.max(a, b);
-      for (let i = start; i <= end; i++) out.push(i - 1);
-    } else {
-      const n = parseInt(part, 10);
-      if (Number.isFinite(n) && n >= 1 && n <= max) out.push(n - 1);
-    }
-  }
-  return [...new Set(out)];
+function fitTextToWidth(font: any, text: string, targetWidth: number) {
+  // naive downsize loop; fast enough for single string
+  let size = 48;
+  while (size > 6 && font.widthOfTextAtSize(text, size) > targetWidth) size -= 1;
+  return size;
 }
-
-function toInt(v: FormDataEntryValue | null): number | undefined {
-  if (!v) return undefined;
-  const n = parseInt(String(v), 10);
-  return Number.isFinite(n) ? n : undefined;
-}
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
+function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 function txt(status: number, msg: string) {
   return new Response(msg, { status, headers: { "Content-Type": "text/plain" } });
 }
