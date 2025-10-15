@@ -45,7 +45,7 @@ export default function Navbar() {
             <Link href="/about" className="py-2 text-white/80 hover:text-[var(--accent)]">About</Link>
             <Link href="/api" className="py-2 text-white/80 hover:text-[var(--accent)]">API</Link>
             <Link href="/contact" className="py-2 text-white/80 hover:text-[var(--accent)]">Contact</Link>
-            <Link href="/app" className="mt-2 btn rounded-md w-full text-center">⚡ Launch App</Link>
+            <Link href="buymeacoffee.com/Bmoo" className="mt-2 btn rounded-md w-full text-center">Buy me a coffee :)</Link>
           </div>
         </div>
       )}
