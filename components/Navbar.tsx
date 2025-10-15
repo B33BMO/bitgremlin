@@ -26,7 +26,14 @@ export default function Navbar() {
           <Link href="/about" className="text-sm text-white/80 hover:text-[var(--accent)]">About</Link>
           <Link href="/api" className="text-sm text-white/80 hover:text-[var(--accent)]">API</Link>
           <Link href="/contact" className="text-sm text-white/80 hover:text-[var(--accent)]">Contact</Link>
-          <Link href="/app" className="btn rounded-md">Buy Me Coffee :)</Link>
+                      <a
+  href="https://buymeacoffee.com/Bmoo"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="mt-2 btn rounded-md w-full text-center"
+>
+  Buy me a coffee :)
+</a>
         </div>
 
         <button
