@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 // Client-only PDF preview
 // (Don’t import these anywhere server-side.)
-import * as pdfjsLib from "pdfjs-dist/build/pdf";
-import "pdfjs-dist/build/pdf.worker.entry";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+import "pdfjs-dist/legacy/build/pdf.worker.min.js";
 
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
 
