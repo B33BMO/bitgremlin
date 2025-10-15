@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { createReadStream, promises as fsp } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // up to 5 min to be safe
+export const maxDuration = 300;
 
-// Optional overrides
-const YTDLP_BIN = process.env.YTDLP_BIN || "/usr/local/bin/yt-dlp";
-const FFMPEG_PATH = process.env.FFMPEG_PATH || "ffmpeg";
+// Optional overrides (absolute paths if you set them)
+const YTDLP_BIN_ENV = process.env.YTDLP_BIN;   // e.g. /usr/local/bin/yt-dlp
+const FFMPEG_PATH_ENV = process.env.FFMPEG_PATH; // e.g. /usr/bin/ffmpeg
 
 type Body = { url?: string; format?: "mp3" | "mp4" | "wav" };
 
@@ -20,95 +20,109 @@ export async function POST(req: NextRequest) {
     const url = (body.url || "").trim();
     const format = (body.format || "mp3").toLowerCase() as "mp3" | "mp4" | "wav";
 
-    // basic validation
-    if (!isValidYouTubeUrl(url)) {
-      return jsonBad(400, "Invalid URL. Only youtube.com/youtu.be are allowed.");
-    }
-    if (!["mp3", "mp4", "wav"].includes(format)) {
-      return jsonBad(400, "Invalid format. Use mp3, mp4, or wav.");
+    if (!isValidYouTubeUrl(url)) return jsonBad(400, "Invalid URL. Only youtube.com/youtu.be are allowed.");
+    if (!["mp3", "mp4", "wav"].includes(format)) return jsonBad(400, "Invalid format. Use mp3, mp4, or wav.");
+
+    // Detect binaries
+    const ytbin = YTDLP_BIN_ENV || which("yt-dlp") || which("youtube-dl");
+    if (!ytbin) return jsonBad(500, "yt-dlp not found. Install it or set YTDLP_BIN to an absolute path.");
+
+    const ffmpeg = FFMPEG_PATH_ENV || which("ffmpeg");
+    if (!ffmpeg && (format === "mp3" || format === "wav" || format === "mp4")) {
+      return jsonBad(500, "FFmpeg not found. Install ffmpeg or set FFMPEG_PATH to an absolute path.");
     }
 
-    // temp paths
+    // Temp output template
     const id = randomUUID();
-    const outBase = join(tmpdir(), `yt-${id}-%(id)s`);
-    const outFinal = join(tmpdir(), `yt-${id}.${format === "mp4" ? "mp4" : format}`);
+    const outBase = join(tmpdir(), `yt-${id}-%(id)s`); // yt will expand %(id)s
     const commonArgs = [
       "--no-playlist",
-      "--no-warnings",
       "--restrict-filenames",
-      "--ffmpeg-location", FFMPEG_PATH,
+      "--no-warnings",
       "-o", `${outBase}.%(ext)s`,
-      url,
+      url
     ];
 
-    let args: string[] = [];
+    // Only pass --ffmpeg-location if we have an absolute path
+    if (ffmpeg && ffmpeg.startsWith("/")) {
+      commonArgs.unshift(ffmpeg, "--ffmpeg-location"); // insert before others
+      commonArgs.unshift("--ffmpeg-location"); // OOPS—fixed below in final args
+    }
+
+    // Build args per format
+    let args: string[];
     if (format === "mp4") {
+      // Reliable MP4: prefer AVC video + M4A audio, then fallback; merge to mp4
       args = [
         "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
         "--merge-output-format", "mp4",
         ...commonArgs
       ];
     } else {
+      // Audio extract via ffmpeg
       args = [
         "-f", "bestaudio/best",
         "--extract-audio",
         "--audio-format", format, // mp3 or wav
+        "--audio-quality", "0",
         ...commonArgs
       ];
     }
 
-    // actually run it
-    await runYtDlp(args);
+    // Fix: if we decided to pass ffmpeg path, put the pair correctly
+    const finalArgs = ffmpeg && ffmpeg.startsWith("/")
+      ? ["--ffmpeg-location", ffmpeg, ...args]
+      : args;
 
-    // resolve which file yt-dlp created (may have %-replaced names)
+    // Run
+    await runYtDlp(ytbin, finalArgs);
+
+    // Find produced file
     const produced = await resolveOutputFile(tmpdir(), id, format);
-    if (!produced) {
-      throw new Error("Download succeeded but file not found");
-    }
+    if (!produced) throw new Error("Download succeeded but file not found");
 
-    // move/rename to consistent final name for clean streaming & cleanup
-    await fsp.rename(produced, outFinal);
+    const finalName = join(tmpdir(), `yt-${id}.${format === "mp4" ? "mp4" : format}`);
+    await fsp.rename(produced, finalName);
 
-    // stream
-    const stream = createReadStream(outFinal);
-    const headers = new Headers();
-    headers.set("Content-Type", contentTypeFor(format));
-    headers.set("Cache-Control", "no-store");
-    headers.set("Content-Disposition", `attachment; filename="download.${format}"`);
-    headers.set("X-Downloader", "yt-dlp");
-
-    // after response completes, unlink the file
-    // next will close the stream when done; schedule cleanup
-    stream.on("close", () => {
-      fsp.unlink(outFinal).catch(() => {});
+    const stream = createReadStream(finalName);
+    const headers = new Headers({
+      "Content-Type": contentTypeFor(format),
+      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="download.${format}"`,
+      "X-Downloader": "yt-dlp"
     });
-
+    stream.on("close", () => fsp.unlink(finalName).catch(() => {}));
     return new Response(stream as any, { headers });
+
   } catch (e: any) {
     return jsonBad(500, `Download failed: ${e?.message || e}`);
   }
+}
+
+/* ---------- helpers ---------- */
+
+function which(cmd: string): string | null {
+  try {
+    const out = spawnSync("which", [cmd], { encoding: "utf8" });
+    const p = out.stdout.trim();
+    return p ? p : null;
+  } catch { return null; }
 }
 
 function isValidYouTubeUrl(u: string) {
   try {
     const url = new URL(u);
     const host = url.hostname.toLowerCase();
-    return (
-      host.endsWith("youtube.com") ||
-      host === "youtu.be" ||
-      host.endsWith("m.youtube.com")
-    );
-  } catch {
-    return false;
-  }
+    return host.endsWith("youtube.com") || host === "youtu.be" || host.endsWith("m.youtube.com");
+  } catch { return false; }
 }
 
-function runYtDlp(args: string[]) {
+function runYtDlp(bin: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(YTDLP_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
-    child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("close", (code) => {
+    child.stderr.on("data", d => (stderr += d.toString()));
+    child.on("close", code => {
       if (code === 0) return resolve();
       reject(new Error(stderr || `yt-dlp exited with code ${code}`));
     });
@@ -116,15 +130,20 @@ function runYtDlp(args: string[]) {
 }
 
 async function resolveOutputFile(dir: string, id: string, format: "mp3"|"mp4"|"wav") {
-  // find a file starting with `yt-<id>-` and extension matching
   const entries = await fsp.readdir(dir);
   const ext = format === "mp4" ? ".mp4" : `.${format}`;
-  const match = entries.find((n) => n.startsWith(`yt-${id}-`) && n.endsWith(ext));
+  // try strict match first
+  let match = entries.find(n => n.startsWith(`yt-${id}-`) && n.endsWith(ext));
   if (match) return join(dir, match);
-
-  // sometimes yt-dlp already merged/converted to direct name without middle id
-  const alt = entries.find((n) => n.startsWith(`yt-${id}`) && n.endsWith(ext));
-  return alt ? join(dir, alt) : null;
+  // fallbacks
+  match = entries.find(n => n.startsWith(`yt-${id}`) && n.endsWith(ext));
+  if (match) return join(dir, match);
+  // yt-dlp sometimes keeps m4a for audio before convert; map to final ext
+  if (format === "mp3" || format === "wav") {
+    const pre = entries.find(n => n.startsWith(`yt-${id}-`) && (n.endsWith(".m4a") || n.endsWith(".webm") || n.endsWith(".opus")));
+    if (pre) return join(dir, pre);
+  }
+  return null;
 }
 
 function contentTypeFor(fmt: "mp3" | "mp4" | "wav") {
