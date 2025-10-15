@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 import "pdfjs-dist/legacy/build/pdf.worker.min.js";
 
+GlobalWorkerOptions.workerSrc = workerUrl;
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
 
 export default function PDFSuitePage() {
