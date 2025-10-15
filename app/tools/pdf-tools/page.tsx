@@ -1,14 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-// Client-only PDF preview
-// (Don’t import these anywhere server-side.)
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
-import "pdfjs-dist/legacy/build/pdf.worker.min.js";
-
-GlobalWorkerOptions.workerSrc = workerUrl;
-type Tab = "merge" | "split" | "compress" | "text" | "sign";
+import { GlobalWorkerOptions } from "pdfjs-dist";
+| "split" | "compress" | "text" | "sign";
 
 export default function PDFSuitePage() {
   const [tab, setTab] = useState<Tab>("merge");
@@ -268,6 +263,11 @@ function SignTool() {
   useEffect(() => {
     if (pdf && page) reload();
   }, [pdf, page, reload]);
+  useEffect(() => {
+  // Use matching version from the library itself
+  (GlobalWorkerOptions as any).workerSrc =
+    `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
+}, []);
 
   function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!pageSize) return;
