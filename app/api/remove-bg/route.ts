@@ -36,27 +36,38 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function runLocalRembg(file: File): Promise<Response> {
-  const url = (process.env.REMBG_URL || "http://127.0.0.1:7000").replace(/\/$/, "");
-  // rembg server expects multipart field named "image"
+async function runLocalRembg(input: File): Promise<Response> {
+  const base = (process.env.REMBG_URL || "http://127.0.0.1:7000").replace(/\/$/, "");
+
+  // rembg server expects multipart field named "file"
   const fd = new FormData();
-  fd.append("image", file, file.name || "image.png");
+  fd.append("file", input, input.name || "image.png");
 
-  const r = await fetch(`${url}/remove`, { method: "POST", body: fd });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`rembg server error ${r.status}: ${t}`);
-  }
+  // Try the modern path first, then fallback
+  const paths = ["/api/remove", "/remove"];
+  let lastErr: string | null = null;
 
-  const buf = await r.arrayBuffer();
-  return new Response(Buffer.from(buf), {
-    headers: {
-      "content-type": "image/png",
-      "cache-control": "no-store",
-      "x-bg-backend": "local-rembg"
+  for (const p of paths) {
+    const r = await fetch(`${base}${p}`, { method: "POST", body: fd });
+    if (r.ok) {
+      const buf = await r.arrayBuffer();
+      return new Response(Buffer.from(buf), {
+        headers: {
+          "content-type": "image/png",
+          "cache-control": "no-store",
+          "x-bg-backend": `local-rembg${p}`
+        }
+      });
+    } else {
+      const t = await r.text().catch(() => "");
+      lastErr = `rembg server error ${r.status} on ${p}: ${t || "(no body)"}`;
+      // If 404, try next path; otherwise bail early
+      if (r.status !== 404) break;
     }
-  });
+  }
+  throw new Error(lastErr || "rembg server unreachable");
 }
+
 
 async function runReplicate(file: File): Promise<Response> {
   const token = process.env.REPLICATE_API_TOKEN;
