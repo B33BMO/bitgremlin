@@ -5,6 +5,19 @@ import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 import { GlobalWorkerOptions } from "pdfjs-dist";
 
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
+
+export default function PDFSuitePage() {
+  const [tab, setTab] = useState<Tab>("merge");
+
+  // Set worker once for all pdf.js usage (no bundling of worker needed).
+  useEffect(() => {
+    (GlobalWorkerOptions as any).workerSrc =
+      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
+  }, []);
+
+
+type Tab = "merge" | "split" | "compress" | "text" | "sign";
+
 export default function PDFSuitePage() {
   const [tab, setTab] = useState<Tab>("merge");
 
