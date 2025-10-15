@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     s.id = 'adsbygoogle-script';
                     s.async = true;
                     s.crossOrigin = 'anonymous';
-                    s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-xxxxxxxxxxxxxxxx';
+                    s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9455100130460173';
                     document.head.appendChild(s);
                   }
                   var tries = 0;
