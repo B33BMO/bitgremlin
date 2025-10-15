@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { PDFDocument, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit"; // pdf-lib expects default import name 'fontkit'
-import { plainAddPlaceholder } from "@signpdf/placeholder";
+import { plainAddPlaceholder } from "@signpdf/placeholder-plain";
 import signer from "node-signpdf";
 
 export const runtime = "nodejs";
