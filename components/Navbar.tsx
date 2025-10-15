@@ -30,10 +30,7 @@ export default function Navbar() {
   href="https://buymeacoffee.com/Bmoo"
   target="_blank"
   rel="noopener noreferrer"
-  className="mt-2 btn rounded-md w-full text-center"
->
-  Buy me a coffee :)
-</a>
+  className="mt-2 btn rounded-md w-full text-center">Buy me a coffee :)</a>
         </div>
 
         <button
