@@ -131,6 +131,15 @@ async function convertAv(inPath: string, outPath: string, kind: "audio"|"video",
 
   await run(FFMPEG_PATH, args);
 }
+function streamBuffer(buf: Uint8Array | ArrayBuffer, mimeType: string, filename: string) {
+  const body = new Blob([buf], { type: mimeType }); // <- Blob satisfies BodyInit
+  const headers = new Headers({
+    "Content-Type": mimeType,
+    "Cache-Control": "no-store",
+    "Content-Disposition": `attachment; filename="${filename}"`
+  });
+  return new Response(body, { headers });
+}
 
 function run(bin: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
