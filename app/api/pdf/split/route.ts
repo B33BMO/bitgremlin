@@ -1,38 +1,81 @@
 import { NextRequest } from "next/server";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { promises as fsp, writeFileSync, createReadStream } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
 import { PDFDocument } from "pdf-lib";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
     if (!(req.headers.get("content-type") || "").includes("multipart/form-data")) {
       return text(400, "Expected multipart/form-data");
     }
+
     const form = await req.formData();
     const file = form.get("file") as File | null;
     const ranges = String(form.get("ranges") || "").trim();
+    const password = String(form.get("password") || "");
+    const ignore = String(form.get("ignore") || "false") === "true";
+
     if (!file) return text(400, "Missing file");
     if (!ranges) return text(400, "Missing ranges");
 
-    const src = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()));
+    // temp setup
+    const id = randomUUID();
+    const tmp = join(tmpdir(), `split-${id}`);
+    await fsp.mkdir(tmp, { recursive: true });
+    const srcPath = join(tmp, "src.pdf");
+    writeFileSync(srcPath, Buffer.from(await file.arrayBuffer()));
+
+    // Try qpdf first
+    const qpdf = which("qpdf");
+    if (qpdf) {
+      const outPath = join(tmp, "extract.pdf");
+      const args = [
+        ...(password ? ["--password=" + password] : []),
+        srcPath,
+        outPath,
+        "--pages",
+        ".",
+        ranges,
+        "--"
+      ];
+      await run(qpdf, args);
+      return sendAndCleanup(outPath, tmp);
+    }
+
+    // Fallback: pdf-lib
+    const src = await loadPdf(Buffer.from(await file.arrayBuffer()), { password, ignore });
     const out = await PDFDocument.create();
 
-    const wanted = parseRanges(ranges, src.getPageCount()); // 1-based to 0-based indices
+    const wanted = parseRanges(ranges, src.getPageCount());
     const pages = await out.copyPages(src, wanted);
     pages.forEach(p => out.addPage(p));
 
     const bytes = await out.save();
-    return new Response(new Blob([bytes], { type: "application/pdf" }), {
+    const blob = new Blob([bytes], { type: "application/pdf" });
+
+    // Cleanup
+    fsp.rm(tmp, { recursive: true, force: true }).catch(() => {});
+
+    return new Response(blob, {
       headers: {
+        "Content-Type": "application/pdf",
         "Cache-Control": "no-store",
         "Content-Disposition": 'attachment; filename="extracted.pdf"'
       }
     });
+
   } catch (e: any) {
     return text(500, `Split failed: ${e?.message || e}`);
   }
 }
+
+/* ----------------- Helpers ------------------ */
 
 function parseRanges(r: string, max: number) {
   const out: number[] = [];
@@ -47,8 +90,55 @@ function parseRanges(r: string, max: number) {
       if (Number.isFinite(n) && n >= 1 && n <= max) out.push(n - 1);
     }
   }
-  // dedupe, preserve order
   return [...new Set(out)];
+}
+
+async function loadPdf(buf: Buffer, opts: { password: string; ignore: boolean }) {
+  try {
+    return await PDFDocument.load(buf);
+  } catch (e1) {
+    if (opts.password) {
+      try {
+        return await PDFDocument.load(buf, { password: opts.password });
+      } catch (e2) {
+        if (opts.ignore) return PDFDocument.load(buf, { ignoreEncryption: true });
+        throw e2;
+      }
+    } else if (opts.ignore) {
+      return PDFDocument.load(buf, { ignoreEncryption: true });
+    } else {
+      throw e1;
+    }
+  }
+}
+
+function which(cmd: string): string | null {
+  try {
+    const out = spawnSync("which", [cmd], { encoding: "utf8" });
+    return out.stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function run(bin: string, args: string[]) {
+  return new Promise<void>((resolve, reject) => {
+    const p = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    p.stderr.on("data", d => (err += d.toString()));
+    p.on("close", c => (c === 0 ? resolve() : reject(new Error(err || `${bin} exited ${c}`))));
+  });
+}
+
+async function sendAndCleanup(path: string, tmp: string) {
+  const stream = createReadStream(path);
+  const headers = new Headers({
+    "Content-Type": "application/pdf",
+    "Cache-Control": "no-store",
+    "Content-Disposition": 'attachment; filename="extracted.pdf"'
+  });
+  stream.on("close", () => fsp.rm(tmp, { recursive: true, force: true }).catch(() => {}));
+  return new Response(stream as any, { headers });
 }
 
 function text(status: number, msg: string) {
