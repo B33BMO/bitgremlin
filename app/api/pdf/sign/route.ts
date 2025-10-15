@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
-import { PDFDocument, rgb } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit"; // pdf-lib expects default import name 'fontkit'
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { plainAddPlaceholder } from "@signpdf/placeholder-plain";
-import signer from "node-signpdf";
+// node-signpdf export shape varies; handle both CJS/ESM:
+import _SignPdf from "node-signpdf";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+type SignerCtor = new () => { sign: (pdf: Buffer, p12: Buffer, opts?: { passphrase?: string }) => Buffer };
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,90 +23,91 @@ export async function POST(req: NextRequest) {
     const page = Math.max(1, parseInt(String(form.get("page") || "1"), 10));
     const x = parseInt(String(form.get("x") || "0"), 10);
     const y = parseInt(String(form.get("y") || "0"), 10);
-    const widthPct = clamp(parseInt(String(form.get("widthPct") || "30"), 10), 5, 90);
+    const widthPct = clamp(parseInt(String(form.get("widthPct") || "28"), 10), 5, 90);
     const text = String(form.get("text") || "").trim();
     const ttf = form.get("ttf") as File | null;
 
-    if (!file || !p12) return txt(400, "Missing PDF or certificate");
+    if (!file) return txt(400, "Missing PDF");
+    if (!p12) return txt(400, "Missing P12/PFX");
     if (!text) return txt(400, "Missing signature text");
 
+    // 1) Load PDF
     const pdfBytes = Buffer.from(await file.arrayBuffer());
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    pdfDoc.registerFontkit(fontkit as any);
+    const doc = await PDFDocument.load(pdfBytes);
+    doc.registerFontkit(fontkit as any);
 
-    // Target page & size
-    const idx = Math.min(pdfDoc.getPageCount(), page) - 1;
-    const pg = pdfDoc.getPage(idx);
+    // 2) Determine target page / dimensions
+    const idx = Math.min(doc.getPageCount(), page) - 1;
+    const pg = doc.getPage(idx);
     const { width: pw } = pg.getSize();
 
-    // font: embed custom if provided, else Helvetica
+    // 3) Embed font (handwritten TTF if provided)
     let font;
     if (ttf) {
       const ttfBytes = Buffer.from(await ttf.arrayBuffer());
-      font = await pdfDoc.embedFont(ttfBytes, { subset: true });
+      font = await doc.embedFont(ttfBytes, { subset: true });
     } else {
-      // fallback to built-in (not handwritten, but ok if no TTF)
-      font = await pdfDoc.embedStandardFont("Helvetica");
+      font = await doc.embedStandardFont(StandardFonts.Helvetica);
     }
 
-    // Appearance sizing
+    // 4) Size the appearance to fit desired width %
     const targetWidth = (widthPct / 100) * pw;
-    const size = fitTextToWidth(font, text, targetWidth); // compute a font size
+    const size = fitTextToWidth(font, text, targetWidth);
     const textWidth = font.widthOfTextAtSize(text, size);
     const textHeight = font.heightAtSize(size);
 
-    // Draw appearance (black text; you can colorize if you want)
-    pg.drawText(text, {
+    // 5) Draw visual appearance (ink)
+    pg.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
+
+    // Signature widget rectangle around the appearance (a bit padded)
+    const rect = {
       x,
-      y,
-      size,
-      font,
-      color: rgb(0, 0, 0),
+      y: y - 2,
+      w: Math.ceil(textWidth) + 6,
+      h: Math.ceil(textHeight) + 8,
+    };
+
+    // 6) Save (classic xref, no object streams) BEFORE placeholder/sign
+    let unsigned = Buffer.from(await doc.save({ useObjectStreams: false }));
+
+    // 7) Add ByteRange/Contents placeholder & widget where we drew the signature
+    unsigned = plainAddPlaceholder({
+      pdfBuffer: unsigned,
+      reason: "Digitally signed",
+      location: "BitGremlin",
+      signatureLength: 8192, // increase if your chain is chunky
+      pageNumber: page, // 1-based
+      rect: [rect.x, rect.y, rect.x + rect.w, rect.y + rect.h],
     });
 
-    // Build a signature annotation rectangle roughly around text
-    const sigRect = { x, y: y - 2, width: Math.ceil(textWidth) + 4, height: Math.ceil(textHeight) + 6 };
+    // 8) PKCS#7 sign using node-signpdf
+    const P12 = Buffer.from(await p12.arrayBuffer());
+    const SignPdfCls: SignerCtor = (((_SignPdf as any).default || _SignPdf) as SignerCtor);
+    const signer = new SignPdfCls();
+    const signed = signer.sign(unsigned, P12, { passphrase: pass });
 
-    // Save incremental after appearance (unsigned bytes)
-    let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-
-    // Add a signature placeholder with a widget on chosen page & rect
-    unsignedPdf = plainAddPlaceholder({
-      pdfBuffer: unsignedPdf,
-      reason: "Digitally signed by BitGremlin",
-      location: "Online",
-      signatureLength: 8192, // buffer for PKCS#7
-      pageNumber: page,      // 1-based
-      rect: [sigRect.x, sigRect.y, sigRect.x + sigRect.width, sigRect.y + sigRect.height],
-    });
-
-    // Sign using PKCS#7 from P12/PFX
-    const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
-    const SignPdf = (signer as any).default || (signer as any); // handle CJS/ESM
-    const sp = new SignPdf();
-    const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
-
-    return new Response(new Blob([signedPdf], { type: "application/pdf" }), {
+    return new Response(new Blob([signed], { type: "application/pdf" }), {
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "no-store",
-        "Content-Disposition": 'attachment; filename="signed.pdf"'
-      }
+        "Content-Disposition": 'attachment; filename="signed.pdf"',
+      },
     });
   } catch (e: any) {
     return txt(500, `Signing failed: ${e?.message || e}`);
   }
 }
 
-/* ---------- helpers ---------- */
+/* ------------- helpers ------------- */
 
 function fitTextToWidth(font: any, text: string, targetWidth: number) {
-  // naive downsize loop; fast enough for single string
   let size = 48;
   while (size > 6 && font.widthOfTextAtSize(text, size) > targetWidth) size -= 1;
   return size;
 }
-function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
 function txt(status: number, msg: string) {
   return new Response(msg, { status, headers: { "Content-Type": "text/plain" } });
 }
