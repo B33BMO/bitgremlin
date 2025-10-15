@@ -23,59 +23,51 @@ export async function POST(req: NextRequest) {
     if (!isValidYouTubeUrl(url)) return jsonBad(400, "Invalid URL. Only youtube.com/youtu.be are allowed.");
     if (!["mp3", "mp4", "wav"].includes(format)) return jsonBad(400, "Invalid format. Use mp3, mp4, or wav.");
 
-    // Detect binaries
-    const ytbin = YTDLP_BIN_ENV || which("yt-dlp") || which("youtube-dl");
-    if (!ytbin) return jsonBad(500, "yt-dlp not found. Install it or set YTDLP_BIN to an absolute path.");
+// Detect binaries
+const ytbin = YTDLP_BIN_ENV || which("yt-dlp") || which("youtube-dl");
+if (!ytbin) return jsonBad(500, "yt-dlp not found. Install it or set YTDLP_BIN.");
+const ffmpeg = FFMPEG_PATH_ENV || which("ffmpeg");
+if (!ffmpeg && (format === "mp3" || format === "wav" || format === "mp4")) {
+  return jsonBad(500, "FFmpeg not found. Install ffmpeg or set FFMPEG_PATH.");
+}
 
-    const ffmpeg = FFMPEG_PATH_ENV || which("ffmpeg");
-    if (!ffmpeg && (format === "mp3" || format === "wav" || format === "mp4")) {
-      return jsonBad(500, "FFmpeg not found. Install ffmpeg or set FFMPEG_PATH to an absolute path.");
-    }
+// Temp output template
+const id = randomUUID();
+const outBase = join(tmpdir(), `yt-${id}-%(id)s`);
+const commonArgs = [
+  "--no-playlist",
+  "--restrict-filenames",
+  "--no-warnings",
+  "-o", `${outBase}.%(ext)s`,
+  url
+];
 
-    // Temp output template
-    const id = randomUUID();
-    const outBase = join(tmpdir(), `yt-${id}-%(id)s`); // yt will expand %(id)s
-    const commonArgs = [
-      "--no-playlist",
-      "--restrict-filenames",
-      "--no-warnings",
-      "-o", `${outBase}.%(ext)s`,
-      url
-    ];
+// Build args per format
+let args: string[];
+if (format === "mp4") {
+  args = [
+    "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
+    "--merge-output-format", "mp4",
+    ...commonArgs
+  ];
+} else {
+  args = [
+    "-f", "bestaudio/best",
+    "--extract-audio",
+    "--audio-format", format, // mp3 or wav
+    "--audio-quality", "0",
+    ...commonArgs
+  ];
+}
 
-    // Only pass --ffmpeg-location if we have an absolute path
-    if (ffmpeg && ffmpeg.startsWith("/")) {
-      commonArgs.unshift(ffmpeg, "--ffmpeg-location"); // insert before others
-      commonArgs.unshift("--ffmpeg-location"); // OOPS—fixed below in final args
-    }
+// Only add the ffmpeg flag **once**, and only if it's an absolute path
+const finalArgs = ffmpeg && ffmpeg.startsWith("/")
+  ? ["--ffmpeg-location", ffmpeg, ...args]
+  : args;
 
-    // Build args per format
-    let args: string[];
-    if (format === "mp4") {
-      // Reliable MP4: prefer AVC video + M4A audio, then fallback; merge to mp4
-      args = [
-        "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
-        "--merge-output-format", "mp4",
-        ...commonArgs
-      ];
-    } else {
-      // Audio extract via ffmpeg
-      args = [
-        "-f", "bestaudio/best",
-        "--extract-audio",
-        "--audio-format", format, // mp3 or wav
-        "--audio-quality", "0",
-        ...commonArgs
-      ];
-    }
+// Run
+await runYtDlp(ytbin, finalArgs);
 
-    // Fix: if we decided to pass ffmpeg path, put the pair correctly
-    const finalArgs = ffmpeg && ffmpeg.startsWith("/")
-      ? ["--ffmpeg-location", ffmpeg, ...args]
-      : args;
-
-    // Run
-    await runYtDlp(ytbin, finalArgs);
 
     // Find produced file
     const produced = await resolveOutputFile(tmpdir(), id, format);
