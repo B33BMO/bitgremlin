@@ -10,10 +10,12 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[color:var(--bg)/0.7] backdrop-blur-md">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         <Link href="/" className="group flex items-center gap-2">
-          <svg width="26" height="26" viewBox="0 0 24 24" className="shrink-0">
-            <path d="M5 19c6-2 8-6 9-12l2 2c1 1 2 3 1 5-1 2-3 4-6 5-2 1-4 1-6 0z" fill="var(--accent)"/>
-            <circle cx="16.5" cy="7.5" r="1.5" fill="var(--accent)"/>
-          </svg>
+          {/* Replace SVG with your logo image */}
+          <img
+            src="/logo.png" // path to your logo in /public folder
+            alt="BitGremlin logo"
+            className="h-6 w-auto shrink-0 transition-transform group-hover:scale-105"
+          />
           <span className="text-sm tracking-widest text-white/90 group-hover:text-[var(--accent)] transition">
             BITGREMLIN.IO
           </span>
@@ -27,7 +29,11 @@ export default function Navbar() {
           <Link href="/app" className="btn rounded-md">Buy Me Coffee :)</Link>
         </div>
 
-        <button className="md:hidden text-white/80" onClick={() => setOpen(v => !v)} aria-label="Toggle Menu">
+        <button
+          className="md:hidden text-white/80"
+          onClick={() => setOpen(v => !v)}
+          aria-label="Toggle Menu"
+        >
           <Menu />
         </button>
       </nav>
