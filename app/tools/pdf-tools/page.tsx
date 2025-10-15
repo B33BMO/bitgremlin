@@ -15,12 +15,6 @@ export default function PDFSuitePage() {
       `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
   }, []);
 
-
-type Tab = "merge" | "split" | "compress" | "text" | "sign";
-
-export default function PDFSuitePage() {
-  const [tab, setTab] = useState<Tab>("merge");
-
   return (
     <main className="mx-auto max-w-4xl px-4 pt-10">
       <h1 className="text-3xl font-semibold">PDF Suite</h1>
