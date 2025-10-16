@@ -18,7 +18,7 @@ export default function ToolPage({ params }: { params: { slug: string } }) {
 
         <div className="mt-6 rounded-xl card p-5">
           <p className="text-sm text-white/70">
-            Drop your UI here (upload zone, URL input, options, progress). Keep it lean and fast.
+            Yep... you're still here...
           </p>
         </div>
       </main>
