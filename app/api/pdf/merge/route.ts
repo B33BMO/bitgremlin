@@ -58,8 +58,6 @@ export async function POST(req: NextRequest) {
         "-dDetectDuplicateImages=true",
         "-dCompressFonts=true",
         "-sOutputFile=" + outPath,
-        // If you need password support for ALL inputs, GS has -sPDFPassword=, but it's per-invocation
-        // and not per-file. We skip it here to avoid wrong-password failures across files.
         ...inputs
       ];
       await run(gs, gsArgs);
@@ -68,7 +66,9 @@ export async function POST(req: NextRequest) {
 
     // 3) Fallback: pdf-lib (works for simple PDFs)
     const { bytes, warnings } = await mergeWithPdfLib(files, { password, ignore });
-    const res = new Response(new Blob([bytes], { type: "application/pdf" }), {
+    
+    // FIX: Use type assertion for Uint8Array compatibility
+    const res = new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "no-store",
