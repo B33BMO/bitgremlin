@@ -274,16 +274,15 @@ function SignTool() {
   const [err, setErr] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
 
+  // FIX: Use useCallback to memoize the reload function
   const { canvasRef, pageSize, pageCount, reload } = usePdfPagePreview(pdf, page);
 
-  // FIX: Use useCallback to memoize the reload function and prevent infinite re-renders
-  const stableReload = useCallback(() => {
-    if (pdf && page) reload();
-  }, [pdf, page, reload]);
-
+  // FIX: Only reload when pdf or page actually changes, not on every render
   useEffect(() => {
-    stableReload();
-  }, [stableReload]);
+    if (pdf && page) {
+      reload();
+    }
+  }, [pdf, page]); // Remove reload from dependencies
 
   function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!pageSize) return;
@@ -637,79 +636,83 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
   const pdfDocRef = useRef<any | null>(null);
   const seqRef = useRef(0); // ignore stale async work
 
-  async function renderPage(n: number) {
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
-
-    // Cancel a render already using this canvas
-    if (renderTaskRef.current) {
-      try { await renderTaskRef.current.cancel(); } catch {}
-      renderTaskRef.current = null;
-    }
-
-    const page = await pdfDocRef.current.getPage(n);
-    const viewport = page.getViewport({ scale: 1.2 });
-
-    // (Re)size canvas before render
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    const thisTask = page.render({ canvasContext: ctx, viewport });
-    renderTaskRef.current = thisTask;
-
-    try {
-      await thisTask.promise;
-      // Only commit state if this render is still the latest
-      if (seqRef.current === n) {
-        setPageSize({ w: viewport.width, h: viewport.height });
-      }
-    } catch (err: any) {
-      // Ignore expected cancellation between rapid changes
-      if (err?.name !== "RenderingCancelledException") throw err;
-    } finally {
-      if (renderTaskRef.current === thisTask) renderTaskRef.current = null;
-      try { page.cleanup?.(); } catch {}
-    }
-  }
-
-  const reload = async () => {
+  // FIX: Memoize the reload function to prevent infinite re-renders
+  const reload = useCallback(async () => {
     if (!file || !canvasRef.current) return;
     ensurePdfWorker();
-    seqRef.current = pageNum; // tag latest request
+    const currentSeq = ++seqRef.current; // tag latest request
 
     // Tear down any previous doc and its pending tasks
     if (renderTaskRef.current) {
       try { await renderTaskRef.current.cancel(); } catch {}
       renderTaskRef.current = null;
     }
-    if (loadingTaskRef.current) {
-      try { await loadingTaskRef.current.destroy?.(); } catch {}
-      loadingTaskRef.current = null;
-    }
     if (pdfDocRef.current) {
       try { await pdfDocRef.current.destroy(); } catch {}
       pdfDocRef.current = null;
     }
 
-    // Load the new/updated doc
-    const data = await file.arrayBuffer();
-    const loadingTask = (pdfjsLib as any).getDocument({ data });
-    loadingTaskRef.current = loadingTask;
+    try {
+      // Load the new/updated doc
+      const data = await file.arrayBuffer();
+      const loadingTask = (pdfjsLib as any).getDocument({ data });
+      loadingTaskRef.current = loadingTask;
 
-    const pdf = await loadingTask.promise;
-    pdfDocRef.current = pdf;
-    setPageCount(pdf.numPages);
+      const pdf = await loadingTask.promise;
+      
+      // Only proceed if this is still the latest request
+      if (seqRef.current !== currentSeq) {
+        await pdf.destroy();
+        return;
+      }
+      
+      pdfDocRef.current = pdf;
+      setPageCount(pdf.numPages);
 
-    const n = Math.min(Math.max(1, pageNum), pdf.numPages);
-    await renderPage(n);
-  };
+      const n = Math.min(Math.max(1, pageNum), pdf.numPages);
+      
+      // Render the page
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Cancel any existing render task
+      if (renderTaskRef.current) {
+        try { await renderTaskRef.current.cancel(); } catch {}
+        renderTaskRef.current = null;
+      }
+
+      const page = await pdf.getPage(n);
+      const viewport = page.getViewport({ scale: 1.2 });
+
+      // (Re)size canvas before render
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      const renderTask = page.render({ canvasContext: ctx, viewport });
+      renderTaskRef.current = renderTask;
+
+      await renderTask.promise;
+      
+      // Only commit state if this render is still the latest
+      if (seqRef.current === currentSeq) {
+        setPageSize({ w: viewport.width, h: viewport.height });
+      }
+      
+      try { page.cleanup(); } catch {}
+    } catch (err: any) {
+      // Ignore expected cancellation between rapid changes
+      if (err?.name !== "RenderingCancelledException" && seqRef.current === currentSeq) {
+        console.error("PDF rendering error:", err);
+      }
+    }
+  }, [file, pageNum]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       (async () => {
         if (renderTaskRef.current) { try { await renderTaskRef.current.cancel(); } catch {} }
-        if (loadingTaskRef.current) { try { await loadingTaskRef.current.destroy?.(); } catch {} }
         if (pdfDocRef.current) { try { await pdfDocRef.current.destroy(); } catch {} }
       })();
     };
