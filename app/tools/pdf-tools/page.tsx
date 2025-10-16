@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import * as pdfjsLib from "pdfjs-dist/build/pdf";
 
-const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs"; // same-origin
+// Dynamic import for PDF.js - client-side only
+let pdfjsLib: any = null;
+const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
 
-// Do NOT reassign GlobalWorkerOptions. Just set its workerSrc.
-function ensurePdfWorker() {
-  const GWO = (pdfjsLib as any).GlobalWorkerOptions;
+async function ensurePdfWorker() {
+  if (!pdfjsLib) {
+    pdfjsLib = await import("pdfjs-dist/build/pdf");
+  }
+  const GWO = pdfjsLib.GlobalWorkerOptions;
   if (GWO && !GWO.workerSrc) {
     GWO.workerSrc = PDFJS_WORKER_SRC;
   }
@@ -28,7 +31,7 @@ export default function PDFSuitePage() {
     <main className="mx-auto max-w-4xl px-4 pt-10">
       <h1 className="text-3xl font-semibold">PDF Suite</h1>
       <p className="mt-2 text-white/70">
-        Merge, split, compress, extract text, or sign with PKCS#7. All local, no uploads to third parties. 
+        Merge, split, compress, extract text, or sign with PKCS#7. All local, no uploads to third parties.
       </p>
 
       <div className="mt-6 flex gap-2">
@@ -258,8 +261,6 @@ function SplitTool() {
 
 /* ---------- Sign (PKCS#7 with click-to-place) ---------- */
 
-/* ---------- Sign (PKCS#7 with click-to-place) ---------- */
-
 function SignTool() {
   const [pdf, setPdf] = useState<File | null>(null);
   const [page, setPage] = useState<number>(1);
@@ -276,10 +277,9 @@ function SignTool() {
   const [err, setErr] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
 
-  // FIX: Use useCallback to memoize the reload function
   const { canvasRef, pageSize, pageCount, reload } = usePdfPagePreview(pdf, page);
 
-  // FIX: Only reload when pdf or page actually changes, not on every render
+  // Only reload when pdf or page actually changes, not on every render
   useEffect(() => {
     if (pdf && page) {
       reload();
@@ -469,7 +469,6 @@ function SignTool() {
   );
 }
 
-
 /* ---------- Compress ---------- */
 
 function CompressTool() {
@@ -650,10 +649,12 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
   const pdfDocRef = useRef<any | null>(null);
   const seqRef = useRef(0); // ignore stale async work
 
-  // FIX: Memoize the reload function to prevent infinite re-renders
+  // Memoize the reload function to prevent infinite re-renders
   const reload = useCallback(async () => {
     if (!file || !canvasRef.current) return;
-    ensurePdfWorker();
+    
+    await ensurePdfWorker(); // Ensure PDF.js is loaded
+    
     const currentSeq = ++seqRef.current; // tag latest request
 
     // Tear down any previous doc and its pending tasks
@@ -669,7 +670,7 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
     try {
       // Load the new/updated doc
       const data = await file.arrayBuffer();
-      const loadingTask = (pdfjsLib as any).getDocument({ data });
+      const loadingTask = pdfjsLib.getDocument({ data });
       loadingTaskRef.current = loadingTask;
 
       const pdf = await loadingTask.promise;
