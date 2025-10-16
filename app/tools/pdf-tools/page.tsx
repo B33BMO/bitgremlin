@@ -28,7 +28,7 @@ export default function PDFSuitePage() {
     <main className="mx-auto max-w-4xl px-4 pt-10">
       <h1 className="text-3xl font-semibold">PDF Suite</h1>
       <p className="mt-2 text-white/70">
-        Merge, split, compress, extract text, or sign with PKCS#7. All local, no uploads to third parties. [WARNING! I am still trying to debug and make sure this tool works!! It is a HUGE WIP.]
+        Merge, split, compress, extract text, or sign with PKCS#7. All local, no uploads to third parties. 
       </p>
 
       <div className="mt-6 flex gap-2">
@@ -328,7 +328,7 @@ function SignTool() {
       <h2 className="text-xl font-medium">Sign (PKCS#7)</h2>
       <p className="mt-1 text-white/60">
         Type your name/initials, (optionally) pick a handwritten TTF, click on the page to place, and sign with a
-        .p12/.pfx certificate.
+        .p12/.pfx certificate. [WARNING! I am still trying to debug and make sure this tool works!! It is a HUGE WIP.]
       </p>
 
       <div className="mt-4 grid gap-6 md:grid-cols-[1.2fr,1fr]">
