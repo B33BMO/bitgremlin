@@ -1,4 +1,3 @@
-// app/api/pdf/pkcs7-sign/route.ts
 import type { NextRequest } from "next/server";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
@@ -30,7 +29,7 @@ export async function POST(req: NextRequest) {
     if (!file || !p12) return txt(400, "Missing PDF or certificate");
     if (!text) return txt(400, "Missing signature text");
 
-    // Load with pdf-lib (Uint8Array is fine)
+    // Load with pdf-lib
     const pdfBytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await PDFDocument.load(pdfBytes);
     pdfDoc.registerFontkit(fontkit as any);
@@ -45,24 +44,33 @@ export async function POST(req: NextRequest) {
       ? await pdfDoc.embedFont(new Uint8Array(await ttf.arrayBuffer()), { subset: true })
       : await pdfDoc.embedStandardFont(StandardFonts.Helvetica);
 
-    // Fit & draw the visible appearance
+    // Fit & draw visible appearance
     const targetWidth = (widthPct / 100) * pw;
     const size = fitTextToWidth(font, text, targetWidth);
     pg.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
 
-    // Save unsigned and keep as a real Node Buffer
+    // Save unsigned (disable object streams for node-signpdf)
     let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
 
-    // Add invisible signature placeholder.
-    // TS is grumpy about Buffer generics → cast the input object to any.
-    unsignedPdf = plainAddPlaceholder({
-      pdfBuffer: unsignedPdf, // real Buffer at runtime
+    // 👇 Cast the function itself so TS stops whining about generic Buffers
+    const addPH = plainAddPlaceholder as unknown as (args: {
+      pdfBuffer: Buffer;
+      reason?: string;
+      location?: string;
+      name?: string;
+      contactInfo?: string;
+      signatureLength?: number;
+    }) => Buffer;
+
+    // Add invisible signature placeholder (ByteRange/Contents)
+    unsignedPdf = addPH({
+      pdfBuffer: unsignedPdf,
       reason: "Digitally signed by BitGremlin",
       location: "Online",
-      name: "BitGremlin Signer",         // some versions' types require these
+      name: "BitGremlin Signer",
       contactInfo: "support@bitgremlin.io",
       signatureLength: 8192,
-    } as any) as Buffer;
+    });
 
     // Sign with P12
     const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
@@ -70,7 +78,7 @@ export async function POST(req: NextRequest) {
     const sp = new SignPdf();
     const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass }) as Buffer;
 
-    // Response wants web types → wrap Buffer in Uint8Array
+    // Return in web-typed body
     return new Response(new Uint8Array(signedPdf), {
       headers: {
         "Content-Type": "application/pdf",
