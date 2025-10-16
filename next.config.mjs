@@ -1,8 +1,7 @@
-// next.config.mjs
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  experimental: { appDir: true }
+  api: {
+    bodyParser: false, // disables built-in parser, we stream instead
+  },
 };
-
 export default nextConfig;
