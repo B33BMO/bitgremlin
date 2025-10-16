@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     if (!file || !p12) return txt(400, "Missing PDF or certificate");
     if (!text) return txt(400, "Missing signature text");
 
-    // Load with pdf-lib
+    // Load with pdf-lib (Uint8Array is fine)
     const pdfBytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await PDFDocument.load(pdfBytes);
     pdfDoc.registerFontkit(fontkit as any);
@@ -45,24 +45,24 @@ export async function POST(req: NextRequest) {
       ? await pdfDoc.embedFont(new Uint8Array(await ttf.arrayBuffer()), { subset: true })
       : await pdfDoc.embedStandardFont(StandardFonts.Helvetica);
 
-    // Fit text width + draw visible appearance
+    // Fit & draw the visible appearance
     const targetWidth = (widthPct / 100) * pw;
     const size = fitTextToWidth(font, text, targetWidth);
     pg.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
 
-    // Save unsigned PDF (disable object streams for node-signpdf)
+    // Save unsigned and keep as a real Node Buffer
     let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
 
-    // Add invisible signature placeholder (ByteRange/Contents).
-    // Some versions' typings require `name` and `contactInfo`.
+    // Add invisible signature placeholder.
+    // TS is grumpy about Buffer generics → cast the input object to any.
     unsignedPdf = plainAddPlaceholder({
-      pdfBuffer: unsignedPdf,
+      pdfBuffer: unsignedPdf, // real Buffer at runtime
       reason: "Digitally signed by BitGremlin",
       location: "Online",
-      name: "BitGremlin Signer",
+      name: "BitGremlin Signer",         // some versions' types require these
       contactInfo: "support@bitgremlin.io",
       signatureLength: 8192,
-    }) as Buffer;
+    } as any) as Buffer;
 
     // Sign with P12
     const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     const sp = new SignPdf();
     const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass }) as Buffer;
 
-    // Response wants a web-typed body → wrap as Uint8Array
+    // Response wants web types → wrap Buffer in Uint8Array
     return new Response(new Uint8Array(signedPdf), {
       headers: {
         "Content-Type": "application/pdf",
