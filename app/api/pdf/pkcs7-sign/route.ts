@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
 
     // ByteRange/Contents placeholder (invisible). Shim fixes the types.
+    // @ts-expect-error signpdf types are wrong; shim supplied
     unsignedPdf = plainAddPlaceholder({
       pdfBuffer: unsignedPdf,
       reason: "Digitally signed by BitGremlin",
