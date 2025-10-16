@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+import * as pdfjsLib from "pdfjs-dist/build/pdf";
 
 const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs"; // same-origin
 
