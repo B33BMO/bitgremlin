@@ -2,18 +2,36 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
-// Dynamic import for PDF.js - client-side only
+// Dynamic import wrapper with proper client-side checking
 let pdfjsLib: any = null;
+let pdfjsLoaded = false;
 const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
 
+async function loadPdfjs() {
+  if (pdfjsLoaded) return pdfjsLib;
+  
+  // Only load on client side
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const pdfjsModule = await import("pdfjs-dist/build/pdf");
+    pdfjsLib = pdfjsModule;
+    
+    // Set worker source
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+    }
+    
+    pdfjsLoaded = true;
+    return pdfjsLib;
+  } catch (error) {
+    console.error("Failed to load PDF.js:", error);
+    return null;
+  }
+}
+
 async function ensurePdfWorker() {
-  if (!pdfjsLib) {
-    pdfjsLib = await import("pdfjs-dist/build/pdf");
-  }
-  const GWO = pdfjsLib.GlobalWorkerOptions;
-  if (GWO && !GWO.workerSrc) {
-    GWO.workerSrc = PDFJS_WORKER_SRC;
-  }
+  return await loadPdfjs();
 }
 
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
@@ -653,7 +671,8 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
   const reload = useCallback(async () => {
     if (!file || !canvasRef.current) return;
     
-    await ensurePdfWorker(); // Ensure PDF.js is loaded
+    const pdfjs = await loadPdfjs();
+    if (!pdfjs) return;
     
     const currentSeq = ++seqRef.current; // tag latest request
 
@@ -670,7 +689,7 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
     try {
       // Load the new/updated doc
       const data = await file.arrayBuffer();
-      const loadingTask = pdfjsLib.getDocument({ data });
+      const loadingTask = pdfjs.getDocument({ data });
       loadingTaskRef.current = loadingTask;
 
       const pdf = await loadingTask.promise;
