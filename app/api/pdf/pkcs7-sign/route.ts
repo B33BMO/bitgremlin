@@ -1,8 +1,7 @@
 import type { NextRequest } from "next/server";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-// ⬇️ use the pdf-lib-specific placeholder package
-import { addPlaceholder } from "@signpdf/placeholder-pdf-lib";
+import { plainAddPlaceholder } from "@signpdf/placeholder-plain";
 import signer from "node-signpdf";
 import { Buffer as NodeBuffer } from "node:buffer";
 import type { Buffer as NodeBufferType } from "node:buffer";
@@ -31,17 +30,17 @@ export async function POST(req: NextRequest) {
     if (!file || !p12) return txt(400, "Missing PDF or certificate");
     if (!text) return txt(400, "Missing signature text");
 
-    // pdf-lib likes Uint8Array
+    // Load with pdf-lib (Uint8Array is fine)
     const pdfBytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await PDFDocument.load(pdfBytes);
     pdfDoc.registerFontkit(fontkit as any);
 
-    // page + width
+    // Target page
     const idx = Math.min(pdfDoc.getPageCount(), page) - 1;
     const pg = pdfDoc.getPage(idx);
     const { width: pw } = pg.getSize();
 
-    // font
+    // Font (custom TTF or Helvetica)
     let font;
     if (ttf) {
       const ttfBytes = new Uint8Array(await ttf.arrayBuffer());
@@ -50,45 +49,33 @@ export async function POST(req: NextRequest) {
       font = await pdfDoc.embedStandardFont(StandardFonts.Helvetica);
     }
 
-    // size to width
+    // Fit text width
     const targetWidth = (widthPct / 100) * pw;
     const size = fitTextToWidth(font, text, targetWidth);
-    const textWidth = font.widthOfTextAtSize(text, size);
-    const textHeight = font.heightAtSize(size);
 
-    // draw text so user sees the string
+    // Draw the visible appearance (your label)
     pg.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
 
-    // visible widget rect around the text
-    const sigRect = {
-      x,
-      y: y - 2,
-      width: Math.ceil(textWidth) + 4,
-      height: Math.ceil(textHeight) + 6,
-    };
-
-    // save to real Node Buffer (node-signpdf requires it; also disable object streams)
+    // Save unsigned PDF as true Node Buffer; disable object streams for node-signpdf
     let unsignedPdf: NodeBufferType = NodeBuffer.from(
       await pdfDoc.save({ useObjectStreams: false })
     );
 
-    // add placeholder with rect on the desired page
-    unsignedPdf = addPlaceholder({
+    // Add an (invisible) signature placeholder (ByteRange + Contents)
+    unsignedPdf = plainAddPlaceholder({
       pdfBuffer: NodeBuffer.from(unsignedPdf),
       reason: "Digitally signed by BitGremlin",
       location: "Online",
-      signatureLength: 8192,
-      pageNumber: page, // 1-based
-      rect: [sigRect.x, sigRect.y, sigRect.x + sigRect.width, sigRect.y + sigRect.height],
+      signatureLength: 8192, // room for PKCS#7
     }) as unknown as NodeBufferType;
 
-    // sign with P12
+    // Sign with P12/PFX
     const p12buf: NodeBufferType = NodeBuffer.from(await (p12 as File).arrayBuffer());
     const SignPdf = (signer as any).default || (signer as any);
     const sp = new SignPdf();
     const signedPdf: NodeBufferType = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
 
-    // Response wants web types → wrap Buffer in a Uint8Array
+    // Hand Response a web-typed body (Uint8Array)
     return new Response(new Uint8Array(signedPdf), {
       headers: {
         "Content-Type": "application/pdf",
