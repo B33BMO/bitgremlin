@@ -12,7 +12,7 @@ async function loadPdfjs() {
   
   // Only load on client side
   if (typeof window === 'undefined') return null;
-  
+  // @ts-expect-error not detecting; shim supplied
   try {
     const pdfjsModule = await import("pdfjs-dist/build/pdf");
     pdfjsLib = pdfjsModule;
