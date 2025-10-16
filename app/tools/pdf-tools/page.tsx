@@ -635,3 +635,4 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
 
   return { canvasRef, pageSize, pageCount, reload };
 }
+ 
