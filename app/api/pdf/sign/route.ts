@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { PDFDocument, rgb } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit"; // pdf-lib expects default import name 'fontkit'
+import fontkit from "@pdf-lib/fontkit";
 import { plainAddPlaceholder } from "@signpdf/placeholder-plain";
-import signer from "node-signpdf";
+import * as signer from "node-signpdf";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -79,7 +79,9 @@ export async function POST(req: NextRequest) {
 
     // Sign using PKCS#7 from P12/PFX
     const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
-    const SignPdf = (signer as any).default || (signer as any); // handle CJS/ESM
+    
+    // Handle CJS/ESM import for node-signpdf
+    const SignPdf = (signer as any).default || signer;
     const sp = new SignPdf();
     const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
 
@@ -103,7 +105,11 @@ function fitTextToWidth(font: any, text: string, targetWidth: number) {
   while (size > 6 && font.widthOfTextAtSize(text, size) > targetWidth) size -= 1;
   return size;
 }
-function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+
+function clamp(n: number, a: number, b: number) { 
+  return Math.max(a, Math.min(b, n)); 
+}
+
 function txt(status: number, msg: string) {
   return new Response(msg, { status, headers: { "Content-Type": "text/plain" } });
 }
