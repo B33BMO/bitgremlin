@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
-// --- pdf.js worker bootstrap (runs immediately in the browser) ---
-const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
 
-// Set on the SAME instance you're using
-if (typeof window !== "undefined") {
-  (pdfjsLib as any).GlobalWorkerOptions =
-    (pdfjsLib as any).GlobalWorkerOptions || {};
-  (pdfjsLib as any).GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs"; // same-origin
+
+// Do NOT reassign GlobalWorkerOptions. Just set its workerSrc.
+function ensurePdfWorker() {
+  const GWO = (pdfjsLib as any).GlobalWorkerOptions;
+  if (GWO && !GWO.workerSrc) {
+    GWO.workerSrc = PDFJS_WORKER_SRC;
+  }
 }
 
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
@@ -18,6 +19,10 @@ export default function PDFSuitePage() {
   const [tab, setTab] = useState<Tab>("merge");
 
   // Set worker once for all pdf.js usage (no bundling of worker needed).
+  useEffect(() => {
+    // runs client-side after hydration
+    ensurePdfWorker();
+  }, []);
 
   return (
     <main className="mx-auto max-w-4xl px-4 pt-10">
@@ -622,6 +627,8 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
 
   const reload = async () => {
     if (!file || !canvasRef.current) return;
+    ensurePdfWorker();
+
 
 const gwo =
   (pdfjsLib as any).GlobalWorkerOptions ||
