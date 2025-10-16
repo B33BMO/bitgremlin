@@ -21,10 +21,7 @@ export default function Page() {
               BitGremlin chews your bits and spits out something better.
             </p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/tools" className="btn rounded-md">⚡ Launch Tools</Link>
-              <Link href="/about" className="btn-ghost rounded-md">Learn More</Link>
-            </div>
+=
           </div>
 
           {/* subtle cyan sweep */}
