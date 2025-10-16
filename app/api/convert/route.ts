@@ -131,8 +131,12 @@ async function convertAv(inPath: string, outPath: string, kind: "audio"|"video",
 
   await run(FFMPEG_PATH, args);
 }
-function streamBuffer(buf: Uint8Array | ArrayBuffer, mimeType: string, filename: string) {
-  const body = new Blob([buf], { type: mimeType }); // <- Blob satisfies BodyInit
+
+// FIX: Properly handle different buffer types for Blob
+function streamBuffer(buf: Buffer | Uint8Array | ArrayBuffer, mimeType: string, filename: string) {
+  // Convert to Uint8Array if it's an ArrayBuffer
+  const blobPart = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
+  const body = new Blob([blobPart], { type: mimeType });
   const headers = new Headers({
     "Content-Type": mimeType,
     "Cache-Control": "no-store",
