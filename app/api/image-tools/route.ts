@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // strip metadata? - FIXED: removed 'iptc' which doesn't exist
-if (strip) img = img.withMetadata();
+    // strip metadata? - FIXED: use empty object to remove all metadata
+    if (strip) img = img.withMetadata({});
 
     // encode
     let outExt = pickExt(format, (blob as any).type);
@@ -64,7 +64,8 @@ if (strip) img = img.withMetadata();
     const outBuf = await img.toBuffer();
     const mime = extToMime(outExt);
 
-    return new Response(new Blob([outBuf], { type: mime }), {
+    // FIX: Use type assertion for Buffer compatibility
+    return new Response(new Blob([outBuf as BlobPart], { type: mime }), {
       headers: {
         "Cache-Control": "no-store",
         "Content-Disposition": `attachment; filename="output.${outExt}"`
