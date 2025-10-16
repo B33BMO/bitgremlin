@@ -2,29 +2,45 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
-// pdf.js globals (loaded dynamically on the client)
+// Dynamic import wrapper with proper client-side checking
 let pdfjsLib: any = null;
 let pdfjsLoaded = false;
 const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
 
 async function loadPdfjs() {
   if (pdfjsLoaded) return pdfjsLib;
-  if (typeof window === "undefined") return null; // only run on client
+  if (typeof window === "undefined") return null;
 
-  try {
-    // ✅ use the legacy browser build (works well in Next)
-    const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf");
-    pdfjsLib = pdfjsModule;
+  // Try a few known entry points across pdfjs-dist versions
+  const candidates = [
+    // v4+ often works with the bare package
+    () => import("pdfjs-dist"),
+    // Common older builds
+    () => import("pdfjs-dist/build/pdf"),
+    // Legacy bundle (some v3 distributions)
+    () => import("pdfjs-dist/legacy/build/pdf"),
+  ];
 
-    if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+  for (const load of candidates) {
+    try {
+      const mod = await load();
+      // PDF.js UMD/ESM shapes vary; normalize to an object with getDocument on it
+      const lib = (mod && (mod as any).getDocument) ? mod : (mod as any).default || mod;
+      if (lib && typeof lib.getDocument === "function") {
+        pdfjsLib = lib;
+        if (pdfjsLib.GlobalWorkerOptions) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+        }
+        pdfjsLoaded = true;
+        return pdfjsLib;
+      }
+    } catch {
+      // try next candidate
     }
-    pdfjsLoaded = true;
-    return pdfjsLib;
-  } catch (error) {
-    console.error("Failed to load PDF.js:", error);
-    return null;
   }
+
+  console.error("Failed to load pdfjs-dist: none of the known entrypoints exist in this install.");
+  return null;
 }
 
 async function ensurePdfWorker() {
