@@ -20,8 +20,6 @@ export default function Page() {
               Convert, compress, trim, merge, rip, hash — fast, private, and free.
               BitGremlin chews your bits and spits out something better.
             </p>
-
-=
           </div>
 
           {/* subtle cyan sweep */}
@@ -34,10 +32,10 @@ export default function Page() {
         {/* ad: below hero (desktop size) */}
         <div className="mt-10 flex justify-center px-4">
           <div className="hidden md:block">
-            <AdSlot id="hero-below-1" width={970} height={90} render="adsense" />
+            <AdSlot id="hero-below-1" width={970} height={40} render="adsense" />
           </div>
           <div className="md:hidden">
-            <AdSlot id="hero-below-mobile" width={320} height={100} render="adsense" />
+            <AdSlot id="hero-below-mobile" width={320} height={40} render="adsense" />
           </div>
         </div>
 
