@@ -7,9 +7,10 @@ import { GlobalWorkerOptions } from "pdfjs-dist";
 const PDFJS_WORKER_SRC =
   `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version || "4.6.82"}/pdf.worker.min.js`;
 
+// Set on the SAME instance you're using (browser only)
 if (typeof window !== "undefined") {
   try {
-    (GlobalWorkerOptions as any).workerSrc = PDFJS_WORKER_SRC;
+    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
   } catch {
     /* no-op */
   }
