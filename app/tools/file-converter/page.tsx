@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Kind = "image" | "audio" | "video";
 
@@ -24,12 +24,18 @@ export default function FileConverterPage() {
     return [];
   }, [kind]);
 
+  // Revoke old object URLs when leaving page / changing output
+  useEffect(() => {
+    return () => {
+      if (outUrl) URL.revokeObjectURL(outUrl);
+    };
+  }, [outUrl]);
+
   function detectKind(f: File): Kind | null {
     const t = (f.type || "").toLowerCase();
     if (t.startsWith("image/")) return "image";
     if (t.startsWith("audio/")) return "audio";
     if (t.startsWith("video/")) return "video";
-    // fallback by extension
     const name = f.name.toLowerCase();
     if (/\.(png|jpe?g|webp|gif|bmp|tiff?)$/.test(name)) return "image";
     if (/\.(mp3|wav|flac|m4a|ogg|opus|aac)$/.test(name)) return "audio";
@@ -43,8 +49,9 @@ export default function FileConverterPage() {
     setFile(f);
     const k = detectKind(f);
     setKind(k);
-    const defaultOut = k === "image" ? "png" : k === "audio" ? "mp3" : k === "video" ? "mp4" : "";
-    setTarget(defaultOut);
+    setTarget(k === "image" ? "png" : k === "audio" ? "mp3" : k === "video" ? "mp4" : "");
+    // allow re-selecting the same file again later
+    if (inputRef.current) inputRef.current.value = "";
   }
 
   async function run() {
@@ -78,37 +85,49 @@ export default function FileConverterPage() {
       <h1 className="text-3xl font-semibold">File Converter</h1>
       <p className="mt-2 text-white/70">Convert images, audio, and video with zero BS. Private, fast, and neat.</p>
 
+      {/* Dropzone / Picker (clickable) */}
       <div
+        onClick={() => inputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
           const f = e.dataTransfer.files?.[0];
           if (f) onPick(f);
         }}
-        className="mt-6 rounded-xl card p-6 neon-edge text-center"
+        className="mt-6 rounded-xl card p-6 neon-edge text-center cursor-pointer hover:bg-white/5 transition-colors"
       >
         <input
           ref={inputRef}
           type="file"
+          // Accept all common media so detection works
+          accept="image/*,audio/*,video/*"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) onPick(f);
           }}
         />
-        <div className="text-sm text-white/70">Drag & drop a file here</div>
-        <div className="mt-2 text-xs text-white/40">Images, audio, or video</div>
-        <button className="btn rounded-md mt-4" onClick={() => inputRef.current?.click()}>
-          Choose File
-        </button>
+        <div className="text-sm text-white/70 select-none">Drag & drop a file here or click to choose</div>
+        <div className="mt-2 text-xs text-white/40">Images • Audio • Video</div>
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            className="btn rounded-md"
+            onClick={(ev) => {
+              ev.stopPropagation();           // avoid triggering parent twice
+              inputRef.current?.click();
+            }}
+          >
+            Choose File
+          </button>
+        </div>
       </div>
 
       {file && (
         <div className="mt-6 rounded-xl card p-5">
           <div className="text-sm text-white/70">Source</div>
           <div className="mt-1 text-xs text-white/50 break-all">
-            {file.name} • {(file.size / 1024 / 1024).toFixed(2)} MB
-            {kind ? ` • ${kind.toUpperCase()}` : ""}
+            {file.name} • {(file.size / 1024 / 1024).toFixed(2)} MB{kind ? ` • ${kind.toUpperCase()}` : ""}
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -119,7 +138,9 @@ export default function FileConverterPage() {
               className="rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
             >
               {targets.map((t) => (
-                <option key={t} value={t}>{t.toUpperCase()}</option>
+                <option key={t} value={t}>
+                  {t.toUpperCase()}
+                </option>
               ))}
             </select>
 
@@ -127,11 +148,11 @@ export default function FileConverterPage() {
               onClick={run}
               disabled={busy || !target}
               className={`ml-auto rounded-md px-4 py-2 text-sm font-medium border ${
-                busy || !target
-                  ? "opacity-50 cursor-not-allowed border-[var(--border)] text-white/40"
-                  : "btn"
+                busy || !target ? "opacity-50 cursor-not-allowed border-[var(--border)] text-white/40" : "btn"
               }`}
-              style={busy || !target ? {} : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }}
+              style={
+                busy || !target ? {} : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }
+              }
             >
               {busy ? "Working…" : "Convert"}
             </button>
@@ -142,12 +163,22 @@ export default function FileConverterPage() {
               Error: {error}
             </div>
           )}
+
           {outUrl && (
             <div className="mt-4">
               <a className="btn rounded-md" href={outUrl} download={downloadName(file.name, target)}>
                 Download .{target.toUpperCase()}
               </a>
-              <button className="btn-ghost rounded-md ml-2" onClick={() => { setFile(null); setOutUrl(null); }}>
+              <button
+                className="btn-ghost rounded-md ml-2"
+                onClick={() => {
+                  setFile(null);
+                  if (outUrl) URL.revokeObjectURL(outUrl);
+                  setOutUrl(null);
+                  setKind(null);
+                  setTarget("");
+                }}
+              >
                 Reset
               </button>
             </div>
