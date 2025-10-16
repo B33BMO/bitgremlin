@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 
-const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
+const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs"; // same-origin
 
-// Fix 1: Improved worker initialization
+// Do NOT reassign GlobalWorkerOptions. Just set its workerSrc.
 function ensurePdfWorker() {
   const GWO = (pdfjsLib as any).GlobalWorkerOptions;
   if (GWO && !GWO.workerSrc) {
@@ -18,7 +18,9 @@ type Tab = "merge" | "split" | "compress" | "text" | "sign";
 export default function PDFSuitePage() {
   const [tab, setTab] = useState<Tab>("merge");
 
+  // Set worker once for all pdf.js usage (no bundling of worker needed).
   useEffect(() => {
+    // runs client-side after hydration
     ensurePdfWorker();
   }, []);
 
@@ -29,7 +31,7 @@ export default function PDFSuitePage() {
         Merge, split, compress, extract text, or sign with PKCS#7. All local, no uploads to third parties.
       </p>
 
-      <div className="mt-6 flex gap-2 flex-wrap">
+      <div className="mt-6 flex gap-2">
         <TabBtn cur={tab} id="merge" setTab={setTab} label="Merge" />
         <TabBtn cur={tab} id="split" setTab={setTab} label="Split / Extract" />
         <TabBtn cur={tab} id="compress" setTab={setTab} label="Compress" />
@@ -37,8 +39,7 @@ export default function PDFSuitePage() {
         <TabBtn cur={tab} id="sign" setTab={setTab} label="Sign (PKCS#7)" />
       </div>
 
-      {/* Fix 2: Added proper card styling */}
-      <div className="mt-4 rounded-xl border border-gray-700 bg-gray-900/50 p-5">
+      <div className="mt-4 rounded-xl card p-5">
         {tab === "merge" && <MergeTool />}
         {tab === "split" && <SplitTool />}
         {tab === "compress" && <CompressTool />}
@@ -64,11 +65,14 @@ function TabBtn({
   return (
     <button
       onClick={() => setTab(id)}
-      className={`rounded-md px-3 py-1 text-sm border transition-colors ${
-        active 
-          ? "border-blue-500 bg-blue-500 text-black" 
-          : "border-gray-600 text-white/70 hover:text-blue-400 hover:border-blue-400"
+      className={`rounded-md px-3 py-1 text-sm border ${
+        active ? "btn" : "border-[var(--border)] text-white/70 hover:text-[var(--accent)]"
       }`}
+      style={
+        active
+          ? { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }
+          : {}
+      }
     >
       {label}
     </button>
@@ -96,8 +100,6 @@ function MergeTool() {
   }
 
   async function run() {
-    if (files.length === 0) return;
-    
     setBusy(true);
     setErr(null);
     setUrl(null);
@@ -120,7 +122,7 @@ function MergeTool() {
       <h2 className="text-xl font-medium">Merge PDFs</h2>
       <p className="mt-1 text-white/60">Order matters. First = first in output.</p>
 
-      <div className="mt-4 flex gap-3 flex-wrap">
+      <div className="mt-4 flex gap-3">
         <input
           ref={inputRef}
           type="file"
@@ -129,26 +131,19 @@ function MergeTool() {
           className="hidden"
           onChange={(e) => pick(e.target.files)}
         />
-        {/* Fix 3: Added proper button styling */}
-        <button 
-          className="rounded-md px-4 py-2 border border-blue-500 bg-blue-500 text-black font-medium hover:bg-blue-600 transition-colors"
-          onClick={() => inputRef.current?.click()}
-        >
+        <button className="btn rounded-md" onClick={() => inputRef.current?.click()}>
           Choose PDFs
         </button>
-        <button 
-          className="rounded-md px-4 py-2 border border-gray-600 text-white/70 hover:border-gray-500 hover:text-white transition-colors"
-          onClick={() => setFiles([])}
-        >
+        <button className="btn-ghost rounded-md" onClick={() => setFiles([])}>
           Clear
         </button>
         <button
-          className="ml-auto rounded-md px-4 py-2 text-sm font-medium border disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="ml-auto rounded-md px-4 py-2 text-sm font-medium border"
           disabled={!files.length || busy}
           onClick={run}
           style={
             !files.length || busy
-              ? { borderColor: "gray", background: "transparent", color: "gray" }
+              ? {}
               : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }
           }
         >
@@ -156,10 +151,10 @@ function MergeTool() {
         </button>
       </div>
 
-      {files.length > 0 && (
+      {!!files.length && (
         <ul className="mt-3 text-xs text-white/60 space-y-1">
           {files.map((f, i) => (
-            <li key={`${f.name}-${i}`} className="truncate">
+            <li key={i} className="truncate">
               {i + 1}. {f.name}
             </li>
           ))}
@@ -168,11 +163,7 @@ function MergeTool() {
 
       {err && <ErrorBox msg={err} />}
       {url && (
-        <a 
-          className="rounded-md px-4 py-2 border border-blue-500 bg-blue-500 text-black font-medium hover:bg-blue-600 transition-colors mt-3 inline-block"
-          href={url} 
-          download="merged.pdf"
-        >
+        <a className="btn rounded-md mt-3 inline-block" href={url} download="merged.pdf">
           Download merged.pdf
         </a>
       )}
@@ -184,15 +175,14 @@ function MergeTool() {
 
 function SplitTool() {
   const [file, setFile] = useState<File | null>(null);
-  const [ranges, setRanges] = useState("1");
+  const [ranges, setRanges] = useState("1"); // e.g. 1,3-5,10
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   async function run() {
-    if (!file || !ranges.trim()) return;
-    
+    if (!file) return;
     setBusy(true);
     setErr(null);
     setUrl(null);
@@ -215,7 +205,7 @@ function SplitTool() {
     <>
       <h2 className="text-xl font-medium">Split / Extract pages</h2>
       <p className="mt-1 text-white/60">
-        Use ranges like <code className="bg-gray-800 px-1 rounded">1,3-5,10</code>.
+        Use ranges like <code>1,3-5,10</code>.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] items-end">
         <div className="flex gap-3">
@@ -226,10 +216,7 @@ function SplitTool() {
             className="hidden"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
-          <button 
-            className="rounded-md px-4 py-2 border border-blue-500 bg-blue-500 text-black font-medium hover:bg-blue-600 transition-colors"
-            onClick={() => inputRef.current?.click()}
-          >
+          <button className="btn rounded-md" onClick={() => inputRef.current?.click()}>
             Choose PDF
           </button>
           {file && (
@@ -243,14 +230,14 @@ function SplitTool() {
             value={ranges}
             onChange={(e) => setRanges(e.target.value)}
             placeholder="1,3-5,10"
-            className="rounded-md border border-gray-600 bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500 transition-colors"
+            className="rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
           <button
-            className="rounded-md px-4 py-2 text-sm font-medium border disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            disabled={!file || !ranges.trim() || busy}
+            className="rounded-md px-4 py-2 text-sm font-medium border"
+            disabled={!file || !ranges || busy}
             onClick={run}
             style={
-              !file || !ranges.trim() || busy
+              !file || !ranges || busy
                 ? {}
                 : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }
             }
@@ -261,11 +248,7 @@ function SplitTool() {
       </div>
       {err && <ErrorBox msg={err} />}
       {url && (
-        <a 
-          className="rounded-md px-4 py-2 border border-blue-500 bg-blue-500 text-black font-medium hover:bg-blue-600 transition-colors mt-3 inline-block"
-          href={url} 
-          download="extracted.pdf"
-        >
+        <a className="btn rounded-md mt-3 inline-block" href={url} download="extracted.pdf">
           Download extracted.pdf
         </a>
       )}
@@ -278,30 +261,36 @@ function SplitTool() {
 function SignTool() {
   const [pdf, setPdf] = useState<File | null>(null);
   const [page, setPage] = useState<number>(1);
+
   const [pfx, setPfx] = useState<File | null>(null);
   const [pass, setPass] = useState("");
+
   const [text, setText] = useState("John Q. Gremlin");
-  const [ttf, setTtf] = useState<File | null>(null);
-  const [widthPct, setWidthPct] = useState(28);
-  const [clickPt, setClickPt] = useState<{ x: number; y: number } | null>(null);
+  const [ttf, setTtf] = useState<File | null>(null); // optional handwritten TTF
+  const [widthPct, setWidthPct] = useState(28); // % of page width to occupy
+
+  const [clickPt, setClickPt] = useState<{ x: number; y: number } | null>(null); // PDF coords
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
 
-  // Fix 4: Fixed infinite re-render loop by using useCallback
   const { canvasRef, pageSize, pageCount, reload } = usePdfPagePreview(pdf, page);
 
-  useEffect(() => {
-    if (pdf && page) {
-      reload();
-    }
+  // FIX: Use useCallback to memoize the reload function and prevent infinite re-renders
+  const stableReload = useCallback(() => {
+    if (pdf && page) reload();
   }, [pdf, page, reload]);
+
+  useEffect(() => {
+    stableReload();
+  }, [stableReload]);
 
   function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!pageSize) return;
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
+    // pdfjs renders origin at top-left; PDF uses bottom-left
     setClickPt({ x: cx, y: pageSize.h - cy });
   }
 
@@ -311,7 +300,6 @@ function SignTool() {
     if (!pdf) return setErr("Choose a PDF.");
     if (!pfx) return setErr("Choose a .p12/.pfx certificate.");
     if (!clickPt) return setErr("Click on the page to place the signature.");
-    
     setBusy(true);
     try {
       const fd = new FormData();
@@ -346,9 +334,9 @@ function SignTool() {
 
       <div className="mt-4 grid gap-6 md:grid-cols-[1.2fr,1fr]">
         {/* Left: preview */}
-        <div className="rounded-xl border border-gray-700 bg-gray-900/50 p-4">
+        <div className="rounded-xl card p-4">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="rounded-md px-4 py-2 border border-blue-500 bg-blue-500 text-black font-medium hover:bg-blue-600 transition-colors cursor-pointer">
+            <label className="btn rounded-md cursor-pointer">
               <input
                 type="file"
                 accept="application/pdf"
@@ -369,32 +357,31 @@ function SignTool() {
                 max={pageCount || 999}
                 value={page}
                 onChange={(e) => setPage(Math.max(1, parseInt(e.target.value || "1", 10)))}
-                className="w-20 rounded-md border border-gray-600 bg-transparent px-2 py-1 text-sm outline-none"
+                className="w-20 rounded-md border border-[var(--border)] bg-transparent px-2 py-1 text-sm outline-none"
               />
               <span className="text-xs text-white/40">/ {pageCount || "?"}</span>
             </div>
           </div>
 
-          <div className="mt-4 overflow-auto rounded-md border border-gray-600 bg-black/20">
+          <div className="mt-4 overflow-auto rounded-md border border-[var(--border)] bg-black/20">
             <canvas ref={canvasRef} onClick={onCanvasClick} className="cursor-crosshair block" />
           </div>
 
           {clickPt && (
             <div className="mt-2 text-xs text-white/50">
-              Placed at (x: {Math.round(clickPt.x)}, y: {Math.round(clickPt.y)}) on page {page}
+              Placed at (x: {clickPt.x}, y: {clickPt.y}) on page {page}
             </div>
           )}
         </div>
 
         {/* Right: settings */}
-        <div className="rounded-xl border border-gray-700 bg-gray-900/50 p-4 grid gap-4">
-          {/* ... settings content remains the same but with proper styling ... */}
+        <div className="rounded-xl card p-4 grid gap-4">
           <div>
             <label className="text-xs text-white/60">Name / Initials (rendered)</label>
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-600 bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500 transition-colors"
+              className="mt-1 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none"
               placeholder="e.g., John Q. Gremlin"
             />
           </div>
@@ -440,7 +427,7 @@ function SignTool() {
                 type="password"
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-600 bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500 transition-colors"
+                className="mt-1 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none"
               />
             </div>
           </div>
@@ -448,22 +435,19 @@ function SignTool() {
           <button
             onClick={run}
             disabled={busy}
-            className={`rounded-md px-4 py-2 text-sm font-medium border transition-colors ${
-              busy 
-                ? "opacity-50 cursor-not-allowed border-gray-600 text-white/40" 
-                : "border-blue-500 bg-blue-500 text-black hover:bg-blue-600"
+            className={`rounded-md px-4 py-2 text-sm font-medium border ${
+              busy ? "opacity-50 cursor-not-allowed border-[var(--border)] text-white/40" : "btn"
             }`}
+            style={
+              busy ? {} : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }
+            }
           >
             {busy ? "Signing…" : "Apply & Sign"}
           </button>
 
           {err && <ErrorBox msg={err} />}
           {url && (
-            <a 
-              className="rounded-md px-4 py-2 border border-blue-500 bg-blue-500 text-black font-medium hover:bg-blue-600 transition-colors text-center"
-              href={url} 
-              download="signed.pdf"
-            >
+            <a className="btn rounded-md" href={url} download="signed.pdf">
               Download signed.pdf
             </a>
           )}
@@ -473,110 +457,263 @@ function SignTool() {
   );
 }
 
-// CompressTool and TextTool would get similar styling fixes...
+/* ---------- Compress ---------- */
+
+function CompressTool() {
+  const [file, setFile] = useState<File | null>(null);
+  const [preset, setPreset] = useState<"/screen" | "/ebook" | "/printer" | "/prepress">(
+    "/ebook"
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function run() {
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    setUrl(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("preset", preset);
+      const res = await fetch("/api/pdf/compress", { method: "POST", body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      setUrl(URL.createObjectURL(blob));
+    } catch (e: any) {
+      setErr(e?.message || "Compress failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <h2 className="text-xl font-medium">Compress</h2>
+      <p className="mt-1 text-white/60">Uses Ghostscript if available. Falls back to linearize only.</p>
+      <div className="mt-4 flex flex-wrap gap-3 items-end">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+        />
+        <button className="btn rounded-md" onClick={() => inputRef.current?.click()}>
+          Choose PDF
+        </button>
+        {file && (
+          <span className="text-xs text-white/50 self-center truncate max-w-[16rem]">
+            {file.name}
+          </span>
+        )}
+        <select
+          value={preset}
+          onChange={(e) => setPreset(e.target.value as any)}
+          className="rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+        >
+          <option value="/screen">Screen (smallest)</option>
+          <option value="/ebook">eBook (good)</option>
+          <option value="/printer">Printer</option>
+          <option value="/prepress">Prepress (largest)</option>
+        </select>
+        <button
+          className="rounded-md px-4 py-2 text-sm font-medium border"
+          disabled={!file || busy}
+          onClick={run}
+          style={
+            !file || busy
+              ? {}
+              : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }
+          }
+        >
+          {busy ? "Working…" : "Compress"}
+        </button>
+      </div>
+      {err && <ErrorBox msg={err} />}
+      {url && (
+        <a className="btn rounded-md mt-3 inline-block" href={url} download="compressed.pdf">
+          Download compressed.pdf
+        </a>
+      )}
+    </>
+  );
+}
+
+/* ---------- Text ---------- */
+
+function TextTool() {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function run() {
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    setUrl(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/pdf/text", { method: "POST", body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      setUrl(URL.createObjectURL(blob));
+    } catch (e: any) {
+      setErr(e?.message || "Extract failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <h2 className="text-xl font-medium">Extract Text</h2>
+      <p className="mt-1 text-white/60">Gets raw text; scans/images won’t produce text (needs OCR).</p>
+      <div className="mt-4 flex gap-3 items-end">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+        />
+        <button className="btn rounded-md" onClick={() => inputRef.current?.click()}>
+          Choose PDF
+        </button>
+        {file && (
+          <span className="text-xs text-white/50 self-center truncate max-w-[16rem]">
+            {file.name}
+          </span>
+        )}
+        <button
+          className="rounded-md px-4 py-2 text-sm font-medium border"
+          disabled={!file || busy}
+          onClick={run}
+          style={
+            !file || busy
+              ? {}
+              : { borderColor: "var(--accent)", background: "var(--accent)", color: "#000" }
+          }
+        >
+          {busy ? "Working…" : "Extract"}
+        </button>
+      </div>
+      {err && <ErrorBox msg={err} />}
+      {url && (
+        <a className="btn rounded-md mt-3 inline-block" href={url} download="extracted.txt">
+          Download extracted.txt
+        </a>
+      )}
+    </>
+  );
+}
+
+/* ---------- Shared UI ---------- */
+
+function ErrorBox({ msg }: { msg: string }) {
+  return (
+    <div className="mt-3 rounded-md border border-red-500/30 bg-black/30 p-3 text-sm text-red-300">
+      Error: {msg}
+    </div>
+  );
+}
 
 /* ---------- pdf.js preview hook (client-only) ---------- */
 
 function usePdfPagePreview(file: File | null, pageNum: number) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
 
+  // Keep refs to cancel/cleanup between renders
   const loadingTaskRef = useRef<any | null>(null);
   const renderTaskRef = useRef<any | null>(null);
   const pdfDocRef = useRef<any | null>(null);
-  const seqRef = useRef(0);
+  const seqRef = useRef(0); // ignore stale async work
 
-  // Fix 5: Wrap reload in useCallback to prevent infinite re-renders
-  const reload = useCallback(async () => {
-    if (!file || !canvasRef.current) return;
-    
-    ensurePdfWorker();
-    const currentSeq = ++seqRef.current;
+  async function renderPage(n: number) {
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
 
-    // Cleanup previous tasks
+    // Cancel a render already using this canvas
     if (renderTaskRef.current) {
       try { await renderTaskRef.current.cancel(); } catch {}
       renderTaskRef.current = null;
+    }
+
+    const page = await pdfDocRef.current.getPage(n);
+    const viewport = page.getViewport({ scale: 1.2 });
+
+    // (Re)size canvas before render
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    const thisTask = page.render({ canvasContext: ctx, viewport });
+    renderTaskRef.current = thisTask;
+
+    try {
+      await thisTask.promise;
+      // Only commit state if this render is still the latest
+      if (seqRef.current === n) {
+        setPageSize({ w: viewport.width, h: viewport.height });
+      }
+    } catch (err: any) {
+      // Ignore expected cancellation between rapid changes
+      if (err?.name !== "RenderingCancelledException") throw err;
+    } finally {
+      if (renderTaskRef.current === thisTask) renderTaskRef.current = null;
+      try { page.cleanup?.(); } catch {}
+    }
+  }
+
+  const reload = async () => {
+    if (!file || !canvasRef.current) return;
+    ensurePdfWorker();
+    seqRef.current = pageNum; // tag latest request
+
+    // Tear down any previous doc and its pending tasks
+    if (renderTaskRef.current) {
+      try { await renderTaskRef.current.cancel(); } catch {}
+      renderTaskRef.current = null;
+    }
+    if (loadingTaskRef.current) {
+      try { await loadingTaskRef.current.destroy?.(); } catch {}
+      loadingTaskRef.current = null;
     }
     if (pdfDocRef.current) {
       try { await pdfDocRef.current.destroy(); } catch {}
       pdfDocRef.current = null;
     }
 
-    try {
-      const data = await file.arrayBuffer();
-      const loadingTask = (pdfjsLib as any).getDocument({ data });
-      loadingTaskRef.current = loadingTask;
+    // Load the new/updated doc
+    const data = await file.arrayBuffer();
+    const loadingTask = (pdfjsLib as any).getDocument({ data });
+    loadingTaskRef.current = loadingTask;
 
-      const pdf = await loadingTask.promise;
-      // Only proceed if this is still the latest request
-      if (seqRef.current !== currentSeq) {
-        await pdf.destroy();
-        return;
-      }
-      
-      pdfDocRef.current = pdf;
-      setPageCount(pdf.numPages);
+    const pdf = await loadingTask.promise;
+    pdfDocRef.current = pdf;
+    setPageCount(pdf.numPages);
 
-      const n = Math.min(Math.max(1, pageNum), pdf.numPages);
-      const page = await pdf.getPage(n);
-      const viewport = page.getViewport({ scale: 1.2 });
+    const n = Math.min(Math.max(1, pageNum), pdf.numPages);
+    await renderPage(n);
+  };
 
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      const renderTask = page.render({ canvasContext: ctx, viewport });
-      renderTaskRef.current = renderTask;
-
-      await renderTask.promise;
-      
-      if (seqRef.current === currentSeq) {
-        setPageSize({ w: viewport.width, h: viewport.height });
-      }
-      
-      page.cleanup?.();
-    } catch (err: any) {
-      if (err?.name !== "RenderingCancelledException") {
-        console.error("PDF rendering error:", err);
-      }
-    }
-  }, [file, pageNum]);
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Cleanup on unmount
       (async () => {
-        if (renderTaskRef.current) { 
-          try { await renderTaskRef.current.cancel(); } catch {} 
-        }
-        if (pdfDocRef.current) { 
-          try { await pdfDocRef.current.destroy(); } catch {} 
-        }
+        if (renderTaskRef.current) { try { await renderTaskRef.current.cancel(); } catch {} }
+        if (loadingTaskRef.current) { try { await loadingTaskRef.current.destroy?.(); } catch {} }
+        if (pdfDocRef.current) { try { await pdfDocRef.current.destroy(); } catch {} }
       })();
     };
   }, []);
 
   return { canvasRef, pageSize, pageCount, reload };
-}
-
-function ErrorBox({ msg }: { msg: string }) {
-  return (
-    <div className="mt-3 rounded-md border border-red-500/30 bg-red-900/20 p-3 text-sm text-red-300">
-      Error: {msg}
-    </div>
-  );
-}
-
-// Add placeholder implementations for missing tools
-function CompressTool() {
-  return <div>Compress Tool - Implementation needed</div>;
-}
-
-function TextTool() {
-  return <div>Text Tool - Implementation needed</div>;
 }
