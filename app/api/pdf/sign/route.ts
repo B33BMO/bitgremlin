@@ -48,11 +48,11 @@ export async function POST(req: NextRequest) {
 
     // Appearance sizing
     const targetWidth = (widthPct / 100) * pw;
-    const size = fitTextToWidth(font, text, targetWidth); // compute a font size
+    const size = fitTextToWidth(font, text, targetWidth);
     const textWidth = font.widthOfTextAtSize(text, size);
     const textHeight = font.heightAtSize(size);
 
-    // Draw appearance (black text; you can colorize if you want)
+    // Draw appearance
     pg.drawText(text, {
       x,
       y,
@@ -61,26 +61,24 @@ export async function POST(req: NextRequest) {
       color: rgb(0, 0, 0),
     });
 
-    // Build a signature annotation rectangle roughly around text
+    // Build a signature annotation rectangle
     const sigRect = { x, y: y - 2, width: Math.ceil(textWidth) + 4, height: Math.ceil(textHeight) + 6 };
 
     // Save incremental after appearance (unsigned bytes)
     let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
 
-    // Add a signature placeholder with a widget on chosen page & rect
+    // Add a signature placeholder
     unsignedPdf = plainAddPlaceholder({
       pdfBuffer: unsignedPdf,
       reason: "Digitally signed by BitGremlin",
       location: "Online",
-      signatureLength: 8192, // buffer for PKCS#7
-      pageNumber: page,      // 1-based
+      signatureLength: 8192,
+      pageNumber: page,
       rect: [sigRect.x, sigRect.y, sigRect.x + sigRect.width, sigRect.y + sigRect.height],
     });
 
     // Sign using PKCS#7 from P12/PFX
     const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
-    
-    // Handle CJS/ESM import for node-signpdf
     const SignPdf = (signer as any).default || signer;
     const sp = new SignPdf();
     const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
@@ -93,6 +91,7 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (e: any) {
+    console.error("Signing error:", e);
     return txt(500, `Signing failed: ${e?.message || e}`);
   }
 }
@@ -100,7 +99,6 @@ export async function POST(req: NextRequest) {
 /* ---------- helpers ---------- */
 
 function fitTextToWidth(font: any, text: string, targetWidth: number) {
-  // naive downsize loop; fast enough for single string
   let size = 48;
   while (size > 6 && font.widthOfTextAtSize(text, size) > targetWidth) size -= 1;
   return size;
