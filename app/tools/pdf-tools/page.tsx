@@ -3,6 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 import { GlobalWorkerOptions } from "pdfjs-dist";
+// --- pdf.js worker bootstrap (runs immediately in the browser) ---
+const PDFJS_WORKER_SRC =
+  `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version || "4.6.82"}/pdf.worker.min.js`;
+
+if (typeof window !== "undefined") {
+  try {
+    (GlobalWorkerOptions as any).workerSrc = PDFJS_WORKER_SRC;
+  } catch {
+    /* no-op */
+  }
+}
 
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
 
@@ -618,6 +629,12 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
 
   const reload = async () => {
     if (!file || !canvasRef.current) return;
+
+    // ensure worker is set before calling getDocument
+    if (!(GlobalWorkerOptions as any).workerSrc) {
+      (GlobalWorkerOptions as any).workerSrc = PDFJS_WORKER_SRC;
+    }
+
     const data = await file.arrayBuffer();
     const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
     setPageCount(pdf.numPages);
@@ -625,14 +642,15 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
     const n = Math.min(Math.max(1, pageNum), pdf.numPages);
     const page = await pdf.getPage(n);
     const viewport = page.getViewport({ scale: 1.2 });
+
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     setPageSize({ w: viewport.width, h: viewport.height });
+
     await page.render({ canvasContext: ctx, viewport }).promise;
   };
 
   return { canvasRef, pageSize, pageCount, reload };
 }
- 
