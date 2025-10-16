@@ -1,10 +1,11 @@
+// app/api/pdf/pkcs7-sign/route.ts
 import type { NextRequest } from "next/server";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import { plainAddPlaceholder } from "@signpdf/placeholder-plain";
+import { addPlaceholder } from "@signpdf/placeholder";
 import signer from "node-signpdf";
-import { Buffer as NodeBuffer } from "node:buffer";            // value
-import type { Buffer as NodeBufferType } from "node:buffer";   // type
+import { Buffer as NodeBuffer } from "node:buffer";
+import type { Buffer as NodeBufferType } from "node:buffer";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -14,6 +15,7 @@ export async function POST(req: NextRequest) {
     if (!(req.headers.get("content-type") || "").includes("multipart/form-data")) {
       return txt(400, "Expected multipart/form-data");
     }
+
     const form = await req.formData();
 
     const file = form.get("file") as File | null;
@@ -29,15 +31,17 @@ export async function POST(req: NextRequest) {
     if (!file || !p12) return txt(400, "Missing PDF or certificate");
     if (!text) return txt(400, "Missing signature text");
 
-    // pdf-lib is fine with Uint8Array
+    // pdf-lib is happy with Uint8Array
     const pdfBytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await PDFDocument.load(pdfBytes);
     pdfDoc.registerFontkit(fontkit as any);
 
+    // Target page & dims
     const idx = Math.min(pdfDoc.getPageCount(), page) - 1;
     const pg = pdfDoc.getPage(idx);
     const { width: pw } = pg.getSize();
 
+    // Font: custom TTF if provided, else Helvetica
     let font;
     if (ttf) {
       const ttfBytes = new Uint8Array(await ttf.arrayBuffer());
@@ -46,37 +50,45 @@ export async function POST(req: NextRequest) {
       font = await pdfDoc.embedStandardFont(StandardFonts.Helvetica);
     }
 
+    // Size text to target width
     const targetWidth = (widthPct / 100) * pw;
     const size = fitTextToWidth(font, text, targetWidth);
     const textWidth = font.widthOfTextAtSize(text, size);
     const textHeight = font.heightAtSize(size);
 
+    // Draw appearance (black text)
     pg.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
 
-    const sigRect = { x, y: y - 2, width: Math.ceil(textWidth) + 4, height: Math.ceil(textHeight) + 6 };
+    // Rect for visible signature widget
+    const sigRect = {
+      x,
+      y: y - 2,
+      width: Math.ceil(textWidth) + 4,
+      height: Math.ceil(textHeight) + 6,
+    };
 
-    // Save to a true Node Buffer
+    // Save unsigned PDF (Node Buffer, no object streams for signpdf)
     let unsignedPdf: NodeBufferType = NodeBuffer.from(
       await pdfDoc.save({ useObjectStreams: false })
     );
 
-    // Ensure placeholder gets a Node Buffer
-    unsignedPdf = plainAddPlaceholder({
+    // Visible signature placeholder on chosen page
+    unsignedPdf = addPlaceholder({
       pdfBuffer: NodeBuffer.from(unsignedPdf),
       reason: "Digitally signed by BitGremlin",
       location: "Online",
-      signatureLength: 8192,
-      pageNumber: page,
+      signatureLength: 8192, // room for PKCS#7
+      pageNumber: page, // 1-based
       rect: [sigRect.x, sigRect.y, sigRect.x + sigRect.width, sigRect.y + sigRect.height],
-    }) as NodeBufferType;
+    }) as unknown as NodeBufferType;
 
-    // Sign with P12
+    // Sign using P12/PFX
     const p12buf: NodeBufferType = NodeBuffer.from(await (p12 as File).arrayBuffer());
     const SignPdf = (signer as any).default || (signer as any);
     const sp = new SignPdf();
     const signedPdf: NodeBufferType = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
 
-    // Return Buffer directly
+    // Return as Uint8Array to satisfy Web Response typings
     return new Response(new Uint8Array(signedPdf), {
       headers: {
         "Content-Type": "application/pdf",
