@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
       return text(400, "Expected multipart/form-data");
     }
 
-    const form = await formData();
+    const form = await req.formData();
     const blob = form.get("file") as File | null;
     if (!blob || typeof (blob as any).arrayBuffer !== "function") {
       return text(400, "Missing file");
@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // strip metadata? - FIXED: use empty object to remove all metadata
-    if (strip) img = img.withMetadata({});
+    // strip metadata? - FIXED: removed 'iptc' which doesn't exist
+if (strip) img = img.withMetadata();
 
     // encode
     let outExt = pickExt(format, (blob as any).type);
