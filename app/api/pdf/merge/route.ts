@@ -133,7 +133,8 @@ async function mergeWithPdfLib(
     } catch (e1: any) {
       if (opts.password) {
         try {
-          doc = await PDFDocument.load(bytes, { password: opts.password });
+          // FIX: Use type assertion for password option
+          doc = await PDFDocument.load(bytes, { password: opts.password } as any);
         } catch (e2: any) {
           if (opts.ignore) {
             try {
