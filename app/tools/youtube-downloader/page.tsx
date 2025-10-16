@@ -117,28 +117,12 @@ export default function YTDownloaderPage() {
     abortRef.current?.abort();
   }
 
-  async function onChooseFile(file: File | null) {
-    if (!file) return;
-    try {
-      const text = await file.text();
-      // find first URL-looking thing
-      const match = text.match(/https?:\/\/[^\s]+/i);
-      if (!match) throw new Error("No URL found in file.");
-      setUrl(match[0]);
-      setError(null);
-    } catch (e: any) {
-      setError(e?.message || "Failed to read file");
-    } finally {
-      // Reset the file input so same file can be picked again later
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
 
   return (
     <main className="mx-auto max-w-3xl px-4 pt-10">
       <h1 className="text-3xl font-semibold">YouTube → MP3 / MP4 / WAV</h1>
       <p className="mt-2 text-white/70">
-        Paste a YouTube link or choose a file containing one, pick a format, and download.
+        Paste a YouTube link, pick a format, and download.
         Please only download content you have the rights to use.
       </p>
 
@@ -152,20 +136,6 @@ export default function YTDownloaderPage() {
             placeholder="https://www.youtube.com/watch?v=..."
             className="flex-1 min-w-[14rem] rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".txt"
-            className="hidden"
-            onChange={(e) => onChooseFile(e.target.files?.[0] || null)}
-          />
-          <button
-            className="btn-ghost rounded-md px-3 py-2 text-sm"
-            onClick={() => fileInputRef.current?.click()}
-            title="Choose a .txt file containing the URL"
-          >
-            Choose file
-          </button>
         </div>
 
         {/* Format + actions */}
