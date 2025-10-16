@@ -620,37 +620,96 @@ function ErrorBox({ msg }: { msg: string }) {
 
 /* ---------- pdf.js preview hook (client-only) ---------- */
 
+/* ---------- pdf.js preview hook (client-only) ---------- */
 function usePdfPagePreview(file: File | null, pageNum: number) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
+
+  // Keep refs to cancel/cleanup between renders
+  const loadingTaskRef = useRef<any | null>(null);
+  const renderTaskRef  = useRef<any | null>(null);
+  const pdfDocRef      = useRef<any | null>(null);
+  const seqRef         = useRef(0); // ignore stale async work
+
+  async function renderPage(n: number) {
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
+
+    // Cancel a render already using this canvas
+    if (renderTaskRef.current) {
+      try { await renderTaskRef.current.cancel(); } catch {}
+      renderTaskRef.current = null;
+    }
+
+    const page = await pdfDocRef.current.getPage(n);
+    const viewport = page.getViewport({ scale: 1.2 });
+
+    // (Re)size canvas before render
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    const thisTask = page.render({ canvasContext: ctx, viewport });
+    renderTaskRef.current = thisTask;
+
+    try {
+      await thisTask.promise;
+      // Only commit state if this render is still the latest
+      if (seqRef.current === n) {
+        setPageSize({ w: viewport.width, h: viewport.height });
+      }
+    } catch (err: any) {
+      // Ignore expected cancellation between rapid changes
+      if (err?.name !== "RenderingCancelledException") throw err;
+    } finally {
+      if (renderTaskRef.current === thisTask) renderTaskRef.current = null;
+      try { page.cleanup?.(); } catch {}
+    }
+  }
 
   const reload = async () => {
     if (!file || !canvasRef.current) return;
     ensurePdfWorker();
+    seqRef.current = pageNum; // tag latest request
 
+    // Tear down any previous doc and its pending tasks
+    if (renderTaskRef.current) {
+      try { await renderTaskRef.current.cancel(); } catch {}
+      renderTaskRef.current = null;
+    }
+    if (loadingTaskRef.current) {
+      try { await loadingTaskRef.current.destroy?.(); } catch {}
+      loadingTaskRef.current = null;
+    }
+    if (pdfDocRef.current) {
+      try { await pdfDocRef.current.destroy(); } catch {}
+      pdfDocRef.current = null;
+    }
 
-const gwo =
-  (pdfjsLib as any).GlobalWorkerOptions ||
-  ((pdfjsLib as any).GlobalWorkerOptions = {});
-if (!gwo.workerSrc) gwo.workerSrc = "/pdf.worker.min.mjs";
-
+    // Load the new/updated doc
     const data = await file.arrayBuffer();
-    const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
+    const loadingTask = (pdfjsLib as any).getDocument({ data });
+    loadingTaskRef.current = loadingTask;
+
+    const pdf = await loadingTask.promise;
+    pdfDocRef.current = pdf;
     setPageCount(pdf.numPages);
 
     const n = Math.min(Math.max(1, pageNum), pdf.numPages);
-    const page = await pdf.getPage(n);
-    const viewport = page.getViewport({ scale: 1.2 });
-
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    setPageSize({ w: viewport.width, h: viewport.height });
-
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    await renderPage(n);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      (async () => {
+        if (renderTaskRef.current) { try { await renderTaskRef.current.cancel(); } catch {} }
+        if (loadingTaskRef.current) { try { await loadingTaskRef.current.destroy?.(); } catch {} }
+        if (pdfDocRef.current)      { try { await pdfDocRef.current.destroy(); } catch {} }
+      })();
+    };
+  }, []);
 
   return { canvasRef, pageSize, pageCount, reload };
 }
