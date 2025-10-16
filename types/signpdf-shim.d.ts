@@ -1,14 +1,12 @@
 // types/signpdf-shim.d.ts
 declare module "@signpdf/placeholder-plain" {
-  // Override the bad type definitions with sane ones.
-  export interface PlainAddPlaceholderInput {
-    pdfBuffer: Buffer | Uint8Array | ArrayBuffer;
+  // Keep it simple: accept a real Node Buffer and return a Buffer.
+  export const plainAddPlaceholder: (input: {
+    pdfBuffer: Buffer;              // real Node Buffer at runtime
     reason?: string;
     location?: string;
     name?: string;
     contactInfo?: string;
     signatureLength?: number;
-  }
-
-  export function plainAddPlaceholder(input: PlainAddPlaceholderInput): Buffer;
+  }) => Buffer;
 }

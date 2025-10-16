@@ -15,7 +15,6 @@ export async function POST(req: NextRequest) {
     }
 
     const form = await req.formData();
-
     const file = form.get("file") as File | null;
     const p12 = form.get("p12") as File | null;
     const pass = String(form.get("pass") || "");
@@ -29,41 +28,27 @@ export async function POST(req: NextRequest) {
     if (!file || !p12) return txt(400, "Missing PDF or certificate");
     if (!text) return txt(400, "Missing signature text");
 
-    // Load with pdf-lib
     const pdfBytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await PDFDocument.load(pdfBytes);
     pdfDoc.registerFontkit(fontkit as any);
 
-    // Target page
     const idx = Math.min(pdfDoc.getPageCount(), page) - 1;
     const pg = pdfDoc.getPage(idx);
     const { width: pw } = pg.getSize();
 
-    // Font (custom TTF or Helvetica)
     const font = ttf
       ? await pdfDoc.embedFont(new Uint8Array(await ttf.arrayBuffer()), { subset: true })
       : await pdfDoc.embedStandardFont(StandardFonts.Helvetica);
 
-    // Fit & draw visible appearance
     const targetWidth = (widthPct / 100) * pw;
     const size = fitTextToWidth(font, text, targetWidth);
     pg.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
 
-    // Save unsigned (disable object streams for node-signpdf)
+    // Node Buffer, object streams off for node-signpdf
     let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
 
-    // 👇 Cast the function itself so TS stops whining about generic Buffers
-    const addPH = plainAddPlaceholder as unknown as (args: {
-      pdfBuffer: Buffer;
-      reason?: string;
-      location?: string;
-      name?: string;
-      contactInfo?: string;
-      signatureLength?: number;
-    }) => Buffer;
-
-    // Add invisible signature placeholder (ByteRange/Contents)
-    unsignedPdf = addPH({
+    // ByteRange/Contents placeholder (invisible). Shim fixes the types.
+    unsignedPdf = plainAddPlaceholder({
       pdfBuffer: unsignedPdf,
       reason: "Digitally signed by BitGremlin",
       location: "Online",
@@ -72,13 +57,11 @@ export async function POST(req: NextRequest) {
       signatureLength: 8192,
     });
 
-    // Sign with P12
     const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
     const SignPdf = (signer as any).default || (signer as any);
     const sp = new SignPdf();
     const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass }) as Buffer;
 
-    // Return in web-typed body
     return new Response(new Uint8Array(signedPdf), {
       headers: {
         "Content-Type": "application/pdf",
@@ -91,18 +74,14 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/* ---------- helpers ---------- */
-
 function fitTextToWidth(font: any, text: string, targetWidth: number) {
   let size = 48;
   while (size > 6 && font.widthOfTextAtSize(text, size) > targetWidth) size -= 1;
   return size;
 }
-
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
-
 function txt(status: number, msg: string) {
   return new Response(msg, { status, headers: { "Content-Type": "text/plain" } });
 }
