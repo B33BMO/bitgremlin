@@ -56,19 +56,19 @@ export async function POST(req: NextRequest) {
     const pages = await out.copyPages(src, wanted);
     pages.forEach(p => out.addPage(p));
 
-    const bytes = await out.save();
-    const blob = new Blob([bytes], { type: "application/pdf" });
 
     // Cleanup
     fsp.rm(tmp, { recursive: true, force: true }).catch(() => {});
 
-    return new Response(blob, {
+    const bytes = await out.save(); // Uint8Array
+    return new Response(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "no-store",
         "Content-Disposition": 'attachment; filename="extracted.pdf"'
       }
     });
+
 
   } catch (e: any) {
     return text(500, `Split failed: ${e?.message || e}`);
