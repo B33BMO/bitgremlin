@@ -37,7 +37,6 @@ export async function POST(req: NextRequest) {
     const { width: pw } = pg.getSize();
 
     // font: embed custom if provided, else Helvetica
-        // @ts-expect-error signpdf types are wrong; shim supplied
     let font;
     if (ttf) {
       const ttfBytes = Buffer.from(await ttf.arrayBuffer());
