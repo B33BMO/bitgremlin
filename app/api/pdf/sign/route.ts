@@ -1,8 +1,9 @@
-import { NextRequest } from "next/server";
-import { PDFDocument, rgb } from "pdf-lib";
+import type { NextRequest } from "next/server";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { plainAddPlaceholder } from "@signpdf/placeholder-plain";
-import * as signer from "node-signpdf";
+import signer from "node-signpdf";
+import { Buffer } from "node:buffer";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -27,68 +28,53 @@ export async function POST(req: NextRequest) {
     if (!file || !p12) return txt(400, "Missing PDF or certificate");
     if (!text) return txt(400, "Missing signature text");
 
-    const pdfBytes = Buffer.from(await file.arrayBuffer());
+    // Load PDF
+    const pdfBytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await PDFDocument.load(pdfBytes);
     pdfDoc.registerFontkit(fontkit as any);
 
-    // Target page & size
+    // Target page
     const idx = Math.min(pdfDoc.getPageCount(), page) - 1;
     const pg = pdfDoc.getPage(idx);
     const { width: pw } = pg.getSize();
 
-    // font: embed custom if provided, else Helvetica
-    let font;
-    if (ttf) {
-      const ttfBytes = Buffer.from(await ttf.arrayBuffer());
-      font = await pdfDoc.embedFont(ttfBytes, { subset: true });
-    } else {
-      // fallback to built-in (not handwritten, but ok if no TTF)
-      font = await pdfDoc.embedStandardFont("Helvetica");
-    }
+    // Font: custom TTF if provided, else built-in Helvetica
+    const font = ttf
+      ? await pdfDoc.embedFont(new Uint8Array(await ttf.arrayBuffer()), { subset: true })
+      : await pdfDoc.embedStandardFont(StandardFonts.Helvetica);
 
-    // Appearance sizing
+    // Size to width and draw visible text
     const targetWidth = (widthPct / 100) * pw;
     const size = fitTextToWidth(font, text, targetWidth);
-    const textWidth = font.widthOfTextAtSize(text, size);
-    const textHeight = font.heightAtSize(size);
+    pg.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
 
-    // Draw appearance
-    pg.drawText(text, {
-      x,
-      y,
-      size,
-      font,
-      color: rgb(0, 0, 0),
-    });
-
-    // Build a signature annotation rectangle
-    const sigRect = { x, y: y - 2, width: Math.ceil(textWidth) + 4, height: Math.ceil(textHeight) + 6 };
-
-    // Save incremental after appearance (unsigned bytes)
+    // Save unsigned (disable object streams for signpdf)
     let unsignedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
 
-    // Add a signature placeholder
-    unsignedPdf = plainAddPlaceholder({
+    // Add invisible signature placeholder (ByteRange/Contents).
+    // Note: placeholder-plain does NOT take page/rect.
+    unsignedPdf = (plainAddPlaceholder as any)({
       pdfBuffer: unsignedPdf,
       reason: "Digitally signed by BitGremlin",
       location: "Online",
+      name: "BitGremlin Signer",
+      contactInfo: "support@bitgremlin.io",
       signatureLength: 8192,
-      pageNumber: page,
-      rect: [sigRect.x, sigRect.y, sigRect.x + sigRect.width, sigRect.y + sigRect.height],
-    });
+    }) as Buffer;
 
-    // Sign using PKCS#7 from P12/PFX
+    // Sign with P12
     const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
-    const SignPdf = (signer as any).default || signer;
+    const SignPdf = (signer as any).default || (signer as any);
     const sp = new SignPdf();
-    const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
+    const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass }) as Buffer;
 
-    return new Response(new Blob([signedPdf], { type: "application/pdf" }), {
+    // Return a web-typed body
+    return new Response(new Uint8Array(signedPdf), {
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "no-store",
-        "Content-Disposition": 'attachment; filename="signed.pdf"'
-      }
+        "Content-Disposition": 'attachment; filename="signed.pdf"',
+      },
     });
   } catch (e: any) {
     console.error("Signing error:", e);
@@ -103,11 +89,9 @@ function fitTextToWidth(font: any, text: string, targetWidth: number) {
   while (size > 6 && font.widthOfTextAtSize(text, size) > targetWidth) size -= 1;
   return size;
 }
-
-function clamp(n: number, a: number, b: number) { 
-  return Math.max(a, Math.min(b, n)); 
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
 }
-
 function txt(status: number, msg: string) {
   return new Response(msg, { status, headers: { "Content-Type": "text/plain" } });
 }
