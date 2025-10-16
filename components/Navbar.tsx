@@ -24,7 +24,6 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-6">
           <Link href="/tools" className="text-sm text-white/80 hover:text-[var(--accent)]">Tools</Link>
           <Link href="/about" className="text-sm text-white/80 hover:text-[var(--accent)]">About</Link>
-          <Link href="/api" className="text-sm text-white/80 hover:text-[var(--accent)]">API</Link>
           <Link href="/contact" className="text-sm text-white/80 hover:text-[var(--accent)]">Contact</Link>
 
           {/* external button — align with links */}
@@ -53,7 +52,6 @@ export default function Navbar() {
           <div className="mx-auto flex max-w-7xl flex-col px-4 py-2">
             <Link href="/tools" className="py-2 text-white/80 hover:text-[var(--accent)]">Tools</Link>
             <Link href="/about" className="py-2 text-white/80 hover:text-[var(--accent)]">About</Link>
-            <Link href="/api" className="py-2 text-white/80 hover:text-[var(--accent)]">API</Link>
             <Link href="/contact" className="py-2 text-white/80 hover:text-[var(--accent)]">Contact</Link>
             <a
               href="https://buymeacoffee.com/Bmoo"
