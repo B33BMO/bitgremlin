@@ -81,15 +81,21 @@ export default function AudioToolsPage() {
         />
         <div className="text-sm text-white/70">Drag & drop a file here</div>
         <div className="mt-1 text-xs text-white/40">MP3 • WAV • FLAC • OGG • AAC • (most video files too)</div>
-        <button
+<button
   type="button"
   className="btn rounded-md mt-4"
   onClick={() => inputRef.current?.click()}
 >
   Choose File
 </button>
+<input
+  ref={inputRef}
+  type="file"
+  accept="audio/*,video/*"
+  className="hidden"
+  onChange={(e) => onPick(e.target.files?.[0] || undefined)}
+/>
 
-        {file && <div className="mt-3 text-xs text-white/60 break-all">{file.name} • {(file.size/1024/1024).toFixed(2)} MB</div>}
       </div>
 
       {/* Options */}
