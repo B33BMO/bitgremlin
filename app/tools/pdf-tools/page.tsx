@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
-// Dynamic import wrapper with proper client-side checking
+// pdf.js globals (loaded dynamically on the client)
 let pdfjsLib: any = null;
 let pdfjsLoaded = false;
 const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
@@ -11,36 +11,27 @@ async function loadPdfjs() {
   if (pdfjsLoaded) return pdfjsLib;
   if (typeof window === "undefined") return null;
 
-  // Try a few known entry points across pdfjs-dist versions
-  const candidates = [
-    // v4+ often works with the bare package
-    () => import("pdfjs-dist"),
-    // Common older builds
-    () => import("pdfjs-dist/build/pdf"),
-    // Legacy bundle (some v3 distributions)
-    () => import("pdfjs-dist/legacy/build/pdf"),
-  ];
-
-  for (const load of candidates) {
-    try {
-      const mod = await load();
-      // PDF.js UMD/ESM shapes vary; normalize to an object with getDocument on it
-      const lib = (mod && (mod as any).getDocument) ? mod : (mod as any).default || mod;
-      if (lib && typeof lib.getDocument === "function") {
-        pdfjsLib = lib;
-        if (pdfjsLib.GlobalWorkerOptions) {
-          pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
-        }
-        pdfjsLoaded = true;
-        return pdfjsLib;
-      }
-    } catch {
-      // try next candidate
+  try {
+    // ✅ import only the package root; works across v3/v4 and avoids TS path resolution errors
+    const mod: any = await import("pdfjs-dist");
+    const lib = mod?.getDocument ? mod : mod?.default ?? mod;
+    if (!lib || typeof lib.getDocument !== "function") {
+      console.error("pdfjs-dist loaded but did not expose getDocument");
+      return null;
     }
-  }
 
-  console.error("Failed to load pdfjs-dist: none of the known entrypoints exist in this install.");
-  return null;
+    // point pdf.js to a worker you copied to /public
+    if (lib.GlobalWorkerOptions) {
+      lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+    }
+
+    pdfjsLib = lib;
+    pdfjsLoaded = true;
+    return pdfjsLib;
+  } catch (err) {
+    console.error("Failed to load pdfjs-dist:", err);
+    return null;
+  }
 }
 
 async function ensurePdfWorker() {
