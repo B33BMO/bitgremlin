@@ -6,7 +6,6 @@ export default function Footer() {
         <div className="mt-2 flex flex-wrap gap-4">
           <a className="hover:text-[var(--accent)]" href="/privacy">Privacy</a>
           <a className="hover:text-[var(--accent)]" href="/terms">Terms</a>
-          <a className="hover:text-[var(--accent)]" href="/api">API</a>
           <a className="hover:text-[var(--accent)]" href="https://github.com/">GitHub</a>
         </div>
       </div>
