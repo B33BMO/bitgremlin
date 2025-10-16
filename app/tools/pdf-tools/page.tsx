@@ -2,26 +2,23 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
-// Dynamic import wrapper with proper client-side checking
+// pdf.js globals (loaded dynamically on the client)
 let pdfjsLib: any = null;
 let pdfjsLoaded = false;
 const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
 
 async function loadPdfjs() {
   if (pdfjsLoaded) return pdfjsLib;
-  
-  // Only load on client side
-  if (typeof window === 'undefined') return null;
-  // @ts-expect-error not detecting; shim supplied
+  if (typeof window === "undefined") return null; // only run on client
+
   try {
-    const pdfjsModule = await import("pdfjs-dist/build/pdf");
+    // ✅ use the legacy browser build (works well in Next)
+    const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf");
     pdfjsLib = pdfjsModule;
-    
-    // Set worker source
+
     if (pdfjsLib.GlobalWorkerOptions) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
     }
-    
     pdfjsLoaded = true;
     return pdfjsLib;
   } catch (error) {
@@ -31,7 +28,7 @@ async function loadPdfjs() {
 }
 
 async function ensurePdfWorker() {
-  return await loadPdfjs();
+  return loadPdfjs();
 }
 
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
@@ -39,9 +36,7 @@ type Tab = "merge" | "split" | "compress" | "text" | "sign";
 export default function PDFSuitePage() {
   const [tab, setTab] = useState<Tab>("merge");
 
-  // Set worker once for all pdf.js usage (no bundling of worker needed).
   useEffect(() => {
-    // runs client-side after hydration
     ensurePdfWorker();
   }, []);
 
@@ -70,6 +65,7 @@ export default function PDFSuitePage() {
     </main>
   );
 }
+
 
 function TabBtn({
   cur,
