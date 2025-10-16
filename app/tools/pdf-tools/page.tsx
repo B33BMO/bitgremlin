@@ -258,6 +258,8 @@ function SplitTool() {
 
 /* ---------- Sign (PKCS#7 with click-to-place) ---------- */
 
+/* ---------- Sign (PKCS#7 with click-to-place) ---------- */
+
 function SignTool() {
   const [pdf, setPdf] = useState<File | null>(null);
   const [page, setPage] = useState<number>(1);
@@ -326,9 +328,20 @@ function SignTool() {
   return (
     <>
       <h2 className="text-xl font-medium">Sign (PKCS#7)</h2>
+      
+      {/* WARNING BANNER */}
+      <div className="mt-2 p-3 rounded-md border border-yellow-500/50 bg-yellow-500/10">
+        <div className="flex items-center gap-2">
+          <span className="text-yellow-300 font-semibold">⚠️ WARNING!</span>
+          <span className="text-yellow-200 text-sm">
+            I am still trying to debug and make sure this tool works!! It is a HUGE WIP.
+          </span>
+        </div>
+      </div>
+      
       <p className="mt-1 text-white/60">
         Type your name/initials, (optionally) pick a handwritten TTF, click on the page to place, and sign with a
-        .p12/.pfx certificate. [WARNING! I am still trying to debug and make sure this tool works!! It is a HUGE WIP.]
+        .p12/.pfx certificate.
       </p>
 
       <div className="mt-4 grid gap-6 md:grid-cols-[1.2fr,1fr]">
@@ -455,6 +468,7 @@ function SignTool() {
     </>
   );
 }
+
 
 /* ---------- Compress ---------- */
 
