@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
-import { GlobalWorkerOptions } from "pdfjs-dist";
 // --- pdf.js worker bootstrap (runs immediately in the browser) ---
 const PDFJS_WORKER_SRC =
   `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version || "4.6.82"}/pdf.worker.min.js`;
