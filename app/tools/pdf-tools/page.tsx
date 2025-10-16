@@ -3,16 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 // --- pdf.js worker bootstrap (runs immediately in the browser) ---
-const PDFJS_WORKER_SRC =
-  `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version || "4.6.82"}/pdf.worker.min.js`;
+const PDFJS_WORKER_SRC = "/pdf.worker.min.mjs";
 
-// Set on the SAME instance you're using (browser only)
+// Set on the SAME instance you're using
 if (typeof window !== "undefined") {
-  try {
-    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
-  } catch {
-    /* no-op */
-  }
+  (pdfjsLib as any).GlobalWorkerOptions =
+    (pdfjsLib as any).GlobalWorkerOptions || {};
+  (pdfjsLib as any).GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
 }
 
 type Tab = "merge" | "split" | "compress" | "text" | "sign";
