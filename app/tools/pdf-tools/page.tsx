@@ -28,7 +28,7 @@ export default function PDFSuitePage() {
     <main className="mx-auto max-w-4xl px-4 pt-10">
       <h1 className="text-3xl font-semibold">PDF Suite</h1>
       <p className="mt-2 text-white/70">
-        Merge, split, compress, extract text, or sign with PKCS#7. All local, no uploads to third parties.
+        Merge, split, compress, extract text, or sign with PKCS#7. All local, no uploads to third parties. [WARNING! I am still trying to debug and make sure this tool works!! It is a HUGE WIP.]
       </p>
 
       <div className="mt-6 flex gap-2">
