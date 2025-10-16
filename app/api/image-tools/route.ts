@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // strip metadata?
-    if (strip) img = img.withMetadata({ exif: undefined, iptc: undefined, xmp: undefined });
+    // strip metadata? - FIXED: removed 'iptc' which doesn't exist
+    if (strip) img = img.withMetadata({ exif: undefined, xmp: undefined });
 
     // encode
     let outExt = pickExt(format, (blob as any).type);
