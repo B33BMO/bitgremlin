@@ -99,23 +99,27 @@ async function loadPdf(
   buf: Uint8Array,
   opts: { password: string; ignore: boolean }
 ): Promise<PDFDocument> {
+  // pdf-lib (this build) does not support password decryption.
+  if (opts.password) {
+    throw new Error(
+      "Encrypted PDF provided, but pdf-lib fallback cannot open passwords. Install qpdf (apt-get install qpdf / brew install qpdf) or remove the password."
+    );
+  }
+
   try {
+    // Best effort: load normally
     return await PDFDocument.load(buf);
   } catch (e1) {
-    if (opts.password) {
-      try {
-        return await PDFDocument.load(buf, { password: opts.password });
-      } catch (e2) {
-        if (opts.ignore) return PDFDocument.load(buf, { ignoreEncryption: true });
-        throw e2;
-      }
-    } else if (opts.ignore) {
-      return PDFDocument.load(buf, { ignoreEncryption: true });
-    } else {
-      throw e1;
+    // If the file is encrypted and user asked to ignore, pdf-lib still can't open it.
+    if (opts.ignore) {
+      throw new Error(
+        "PDF appears encrypted. The 'ignore' option is not supported by pdf-lib for decryption. Install qpdf to process encrypted files."
+      );
     }
+    throw e1;
   }
 }
+
 
 function which(cmd: string): string | null {
   try {
