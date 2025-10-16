@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { PDFDocument, rgb } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit"; // pdf-lib expects default import name 'fontkit'
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { plainAddPlaceholder } from "@signpdf/placeholder-plain";
-import signer from "node-signpdf"; // default export is a function class in some versions; use new (see below)
+import signer from "node-signpdf";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -42,13 +42,13 @@ export async function POST(req: NextRequest) {
       const ttfBytes = Buffer.from(await ttf.arrayBuffer());
       font = await pdfDoc.embedFont(ttfBytes, { subset: true });
     } else {
-      // fallback to built-in (not handwritten, but ok if no TTF)
-      font = await pdfDoc.embedStandardFont("Helvetica");
+      // FIX: Use the correct StandardFonts enum value
+      font = await pdfDoc.embedStandardFont(StandardFonts.Helvetica);
     }
 
     // Appearance sizing
     const targetWidth = (widthPct / 100) * pw;
-    const size = fitTextToWidth(font, text, targetWidth); // compute a font size
+    const size = fitTextToWidth(font, text, targetWidth);
     const textWidth = font.widthOfTextAtSize(text, size);
     const textHeight = font.heightAtSize(size);
 
@@ -79,11 +79,11 @@ export async function POST(req: NextRequest) {
 
     // Sign using PKCS#7 from P12/PFX
     const p12buf = Buffer.from(await (p12 as File).arrayBuffer());
-    const SignPdf = (signer as any).default || (signer as any); // handle CJS/ESM
+    const SignPdf = (signer as any).default || (signer as any);
     const sp = new SignPdf();
     const signedPdf = sp.sign(unsignedPdf, p12buf, { passphrase: pass });
 
-    return new Response(new Blob([signedPdf], { type: "application/pdf" }), {
+    return new Response(new Blob([signedPdf as BlobPart], { type: "application/pdf" }), {
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "no-store",
@@ -98,12 +98,15 @@ export async function POST(req: NextRequest) {
 /* ---------- helpers ---------- */
 
 function fitTextToWidth(font: any, text: string, targetWidth: number) {
-  // naive downsize loop; fast enough for single string
   let size = 48;
   while (size > 6 && font.widthOfTextAtSize(text, size) > targetWidth) size -= 1;
   return size;
 }
-function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+
+function clamp(n: number, a: number, b: number) { 
+  return Math.max(a, Math.min(b, n)); 
+}
+
 function txt(status: number, msg: string) {
   return new Response(msg, { status, headers: { "Content-Type": "text/plain" } });
 }
