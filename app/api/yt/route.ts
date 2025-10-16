@@ -7,7 +7,6 @@ export const maxDuration = 300;
 
 const YTDLP_BIN_ENV = process.env.YTDLP_BIN;
 const FFMPEG_PATH_ENV = process.env.FFMPEG_PATH;
-const STREAM_MODE = process.env.YT_STREAM_MODE === "1"; // toggle
 
 type Body = { url?: string; format?: "mp3" | "mp4" | "wav" };
 
@@ -22,92 +21,133 @@ export async function POST(req: NextRequest) {
     const ytbin = YTDLP_BIN_ENV || which("yt-dlp") || which("youtube-dl");
     if (!ytbin) return jsonBad(500, "yt-dlp not found. Install it or set YTDLP_BIN.");
     const ffmpeg = FFMPEG_PATH_ENV || which("ffmpeg");
-    if (!ffmpeg && (fmt === "mp3" || fmt === "wav" || fmt === "mp4")) {
-      return jsonBad(500, "FFmpeg not found. Install ffmpeg or set FFMPEG_PATH.");
-    }
+    if (!ffmpeg) return jsonBad(500, "FFmpeg not found. Install ffmpeg or set FFMPEG_PATH.");
 
-    if (STREAM_MODE) {
-      // ---- Streaming path: pipe stdout to client (prevents 504) ----
-      const argsBase = [
-        "--no-playlist",
-        "--restrict-filenames",
-        "--no-warnings",
-        "--no-part", // no temp .part files
-        ...(ffmpeg && ffmpeg.startsWith("/") ? ["--ffmpeg-location", ffmpeg] : []),
-      ];
+    // ---- 1) yt-dlp: stream SOURCE -> stdout (no post-processing) ----
+    // audio path: bestaudio; video path: best (yt-dlp muxes internally for stdout)
+    const ytdlpArgs =
+      fmt === "mp4"
+        ? [
+            "--no-playlist",
+            "--restrict-filenames",
+            "--no-warnings",
+            "--no-part",
+            "-f",
+            "best",     // let ffmpeg handle container/fragmentation
+            "-o",
+            "-",        // stdout
+            url,
+          ]
+        : [
+            "--no-playlist",
+            "--restrict-filenames",
+            "--no-warnings",
+            "--no-part",
+            "-f",
+            "bestaudio/best",
+            "-o",
+            "-",        // stdout
+            url,
+          ];
 
-      const args =
-        fmt === "mp4"
-          ? [
-              "-f",
-              "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
-              "--merge-output-format",
-              "mp4",
-              "-o",
-              "-", // stdout
-              ...argsBase,
-              url,
-            ]
-          : [
-              "-f",
-              "bestaudio/best",
-              "--extract-audio",
-              "--audio-format",
-              fmt, // mp3 or wav
-              "--audio-quality",
-              "0",
-              "-o",
-              "-", // stdout
-              ...argsBase,
-              url,
-            ];
+    const ytdlp = spawn(ytbin, ytdlpArgs, { stdio: ["ignore", "pipe", "pipe"] });
 
-      const child = spawn(ytbin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // ---- 2) ffmpeg: stdin <- ytdlp.stdout, stdout -> HTTP response ----
+    const ffArgs =
+      fmt === "mp3"
+        ? [
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-vn",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "320k",
+            "-f",
+            "mp3",
+            "pipe:1",
+          ]
+        : fmt === "wav"
+        ? [
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-vn",
+            "-f",
+            "wav",
+            "pipe:1",
+          ]
+        : [
+            // MP4 video: remux to fragmented mp4 so the client can start playing immediately
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-c",
+            "copy", // try to avoid re-encode; if incompatible, ffmpeg will complain; you can fall back to re-encode
+            "-movflags",
+            "+frag_keyframe+empty_moov",
+            "-f",
+            "mp4",
+            "pipe:1",
+          ];
 
-      let stderr = "";
-      child.stderr.on("data", (d) => (stderr += d.toString()));
+    const ff = spawn(ffmpeg, ffArgs, { stdio: ["pipe", "pipe", "pipe"] });
 
-      const headers = new Headers({
-        "Content-Type": contentTypeFor(fmt),
-        "Cache-Control": "no-store",
-        "Content-Disposition": `attachment; filename="download.${fmt}"`,
-        // don’t set Content-Length; let it be chunked
-      });
+    // pipe yt-dlp -> ffmpeg
+    ytdlp.stdout.pipe(ff.stdin);
 
-      // Create a web ReadableStream from the child's stdout
-      const stream = new ReadableStream({
-        start(controller) {
-          child.stdout.on("data", (chunk) => controller.enqueue(chunk));
-          child.stdout.on("end", () => controller.close());
-          child.on("error", (err) => controller.error(err));
-          child.on("close", (code) => {
-            if (code !== 0 && !stderr.includes("Conversion failed")) {
-              // surface useful error
-              controller.error(new Error(stderr || `yt-dlp exited ${code}`));
-            }
-          });
-        },
-        cancel() {
-          try {
-            child.kill("SIGKILL");
-          } catch {}
-        },
-      });
+    // gather errors for useful surfacing
+    let ytdlpErr = "";
+    let ffErr = "";
+    ytdlp.stderr.on("data", (d) => (ytdlpErr += d.toString()));
+    ff.stderr.on("data", (d) => (ffErr += d.toString()));
 
-      return new Response(stream, { headers });
-    }
+    // wire cancellation both ways
+    const cancel = () => {
+      try { ytdlp.kill("SIGKILL"); } catch {}
+      try { ff.kill("SIGKILL"); } catch {}
+    };
 
-    // ---- Non-streaming path (your original write-to-disk version) ----
-    // Keep your existing code here if you still want the file-to-disk fallback.
-    // (Omitted for brevity — your earlier version is fine.)
-    return jsonBad(501, "Non-streaming path disabled. Set YT_STREAM_MODE=1 to enable streaming.");
+    // Create a web ReadableStream from ffmpeg stdout (start sending right away)
+    const stream = new ReadableStream({
+      start(controller) {
+        ff.stdout.on("data", (chunk) => controller.enqueue(chunk));
+        ff.stdout.on("end", () => controller.close());
+        ff.on("error", (err) => controller.error(err));
+        ff.on("close", (code) => {
+          // If ffmpeg failed, surface its stderr
+          if (code !== 0) controller.error(new Error(ffErr || `ffmpeg exited ${code}`));
+        });
+        ytdlp.on("close", (code) => {
+          if (code !== 0 && !ffErr) {
+            // if yt-dlp died but ffmpeg didn't show anything, surface this
+            controller.error(new Error(ytdlpErr || `yt-dlp exited ${code}`));
+          }
+        });
+      },
+      cancel,
+    });
 
+    const headers = new Headers({
+      "Content-Type": contentTypeFor(fmt),
+      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="download.${fmt}"`,
+    });
+
+    return new Response(stream, { headers });
   } catch (e: any) {
     return jsonBad(500, `Download failed: ${e?.message || e}`);
   }
 }
 
-/* ---------- helpers ---------- */
+/* ------------------ helpers ------------------ */
 
 function which(cmd: string): string | null {
   try {
@@ -118,7 +158,6 @@ function which(cmd: string): string | null {
     return null;
   }
 }
-
 function isValidYouTubeUrl(u: string) {
   try {
     const url = new URL(u);
@@ -128,7 +167,6 @@ function isValidYouTubeUrl(u: string) {
     return false;
   }
 }
-
 function contentTypeFor(fmt: "mp3" | "mp4" | "wav") {
   switch (fmt) {
     case "mp3":
@@ -139,7 +177,6 @@ function contentTypeFor(fmt: "mp3" | "mp4" | "wav") {
       return "video/mp4";
   }
 }
-
 function jsonBad(status: number, message: string) {
   return new Response(JSON.stringify({ error: message }), {
     status,

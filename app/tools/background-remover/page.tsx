@@ -55,34 +55,53 @@ export default function BackgroundRemoverPage() {
       </p>
 
       {/* Drop / picker */}
-      <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const f = e.dataTransfer.files?.[0];
-          if (f) onDrop(f);
-        }}
-        className="mt-6 rounded-xl card p-6 neon-edge text-center"
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) onDrop(f);
-          }}
-        />
-        <div className="text-sm text-white/60">Drag & drop an image here</div>
-        <div className="mt-2 text-xs text-white/40">PNG • JPG • WEBP — up to ~10MB</div>
-        <button
-          className="btn rounded-md mt-4"
-          onClick={() => inputRef.current?.click()}
-        >
-          Choose File
-        </button>
-      </div>
+<div
+  onDragOver={(e) => e.preventDefault()}
+  onDrop={(e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files?.[0];
+    if (f) {
+      inputRef.current!.value = ""; // reset so re-uploads work
+      onDrop(f);
+    }
+  }}
+  className="mt-6 rounded-xl card p-6 neon-edge text-center cursor-pointer hover:bg-white/5 transition-colors"
+  onClick={() => inputRef.current?.click()}
+>
+  <input
+    ref={inputRef}
+    type="file"
+    accept="image/*"
+    className="hidden"
+    onChange={(e) => {
+      const f = e.target.files?.[0];
+      if (f) {
+        inputRef.current!.value = ""; // <-- force re-trigger on same file
+        onDrop(f);
+      }
+    }}
+  />
+
+  <div className="text-sm text-white/60 select-none">
+    Drag & drop an image here or click to choose
+  </div>
+  <div className="mt-2 text-xs text-white/40">
+    PNG • JPG • WEBP — up to ~10MB
+  </div>
+  <div className="mt-4 flex justify-center">
+    <button
+      type="button"
+      className="btn rounded-md"
+      onClick={(e) => {
+        e.stopPropagation(); // stop parent click
+        inputRef.current?.click();
+      }}
+    >
+      Choose File
+    </button>
+  </div>
+</div>
+
 
       {/* Selected file preview */}
       {file && (
