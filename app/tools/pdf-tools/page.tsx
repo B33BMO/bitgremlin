@@ -623,10 +623,10 @@ function usePdfPagePreview(file: File | null, pageNum: number) {
   const reload = async () => {
     if (!file || !canvasRef.current) return;
 
-const gwo = (pdfjsLib as any).GlobalWorkerOptions || ((pdfjsLib as any).GlobalWorkerOptions = {});
-if (!gwo.workerSrc) {
-  gwo.workerSrc = PDFJS_WORKER_SRC;
-}
+const gwo =
+  (pdfjsLib as any).GlobalWorkerOptions ||
+  ((pdfjsLib as any).GlobalWorkerOptions = {});
+if (!gwo.workerSrc) gwo.workerSrc = "/pdf.worker.min.mjs";
 
     const data = await file.arrayBuffer();
     const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
