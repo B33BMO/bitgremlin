@@ -134,9 +134,7 @@ async function convertAv(inPath: string, outPath: string, kind: "audio"|"video",
 
 // FIX: Properly handle different buffer types for Blob
 function streamBuffer(buf: Buffer | Uint8Array | ArrayBuffer, mimeType: string, filename: string) {
-  // Convert to Uint8Array if it's an ArrayBuffer
-  const blobPart = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
-  const body = new Blob([blobPart], { type: mimeType });
+  const body = new Blob([buf as BlobPart], { type: mimeType });
   const headers = new Headers({
     "Content-Type": mimeType,
     "Cache-Control": "no-store",
@@ -144,6 +142,7 @@ function streamBuffer(buf: Buffer | Uint8Array | ArrayBuffer, mimeType: string, 
   });
   return new Response(body, { headers });
 }
+
 
 function run(bin: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
