@@ -1,4 +1,3 @@
-import AdSlot from "@/components/ads/AdSlot";
 import ToolCard from "./ToolCard";
 import {
   Scissors, Youtube, FileCode2, Images, FileText, Lock, AudioLines, Box
