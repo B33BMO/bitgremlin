@@ -30,14 +30,42 @@ export default function Page() {
         </section>
 
         {/* ad: below hero (desktop size) */}
-        <div className="mt-10 flex justify-center px-4">
-          <div className="hidden md:block">
-            <AdSlot id="hero-below-1" width={970} height={40} render="adsense" />
-          </div>
-          <div className="md:hidden">
-            <AdSlot id="hero-below-mobile" width={320} height={40} render="adsense" />
-          </div>
-        </div>
+{/* below hero */}
+<div className="mt-10 flex justify-center px-4">
+  <div className="hidden md:block">
+    <AdSlot render="adsense" id="hero-below-1" adSlot="1234567890" width={970} height={90} />
+  </div>
+  <div className="md:hidden">
+    <AdSlot render="adsense" id="hero-below-mobile" adSlot="1234567891" width={320} height={50} />
+  </div>
+</div>
+
+{/* house/affiliate banners */}
+<div className="mt-16 flex justify-center px-4">
+  <div className="hidden md:block">
+    <AdSlot
+      render="image"
+      id="footer-top-affiliate"
+      width={970}
+      height={90}
+      imageHref="https://your-affiliate-link"
+      imageSrc="/ads/affiliate-banner-970x90.jpg"
+      imageAlt="Partner"
+    />
+  </div>
+  <div className="md:hidden">
+    <AdSlot
+      render="image"
+      id="footer-top-affiliate-m"
+      width={300}
+      height={250}
+      imageHref="https://your-affiliate-link"
+      imageSrc="/ads/affiliate-300x250.jpg"
+      imageAlt="Partner"
+    />
+  </div>
+</div>
+
 
         <ToolGrid />
 

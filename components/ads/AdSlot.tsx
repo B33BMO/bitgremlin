@@ -1,32 +1,73 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-type AdSlotProps = {
-  id: string;                              // unique per placement
-  adClient?: string;                       // fallback if needed
-  adSlot: string;                          // your AdSense slot id (numbers)
-  format?: "responsive" | "fixed";
-  width?: number;                          // used when format="fixed"
-  height?: number;                         // used when format="fixed"
+type CommonProps = {
+  id: string;
   className?: string;
-  nonPersonalized?: boolean;               // optional override
   maxViewsPerDay?: number;
+  width?: number;   // used for fixed-size reserve box
+  height?: number;  // used for fixed-size reserve box
 };
+
+type AdSenseProps = CommonProps & {
+  render: "adsense";
+  adSlot: string;                 // <-- your numeric slot id, e.g. "1234567890"
+  adClient?: string;              // defaults to your site client id
+  format?: "responsive" | "fixed";
+  nonPersonalized?: boolean;
+};
+
+type ImageProps = CommonProps & {
+  render: "image";
+  imageHref: string;
+  imageSrc: string;
+  imageAlt?: string;
+};
+
+export type AdSlotProps = AdSenseProps | ImageProps;
 
 const DAY = 24 * 60 * 60 * 1000;
 const viewsKey = (id: string) => `adviews:${id}`;
 
-export default function AdSlot({
-  id,
-  adClient = "ca-pub-9455100130460173",
-  adSlot,
-  format = "responsive",
-  width = 728,
-  height = 90,
-  className = "",
-  nonPersonalized,
-  maxViewsPerDay = 8,
-}: AdSlotProps) {
+// Put your default client id here (or pass via prop)
+const DEFAULT_CLIENT = "ca-pub-XXXXXXXXXXXXXXX";
+
+export default function AdSlot(props: AdSlotProps) {
+  // If it's an image banner, just render it and return
+  if (props.render === "image") {
+    const { id, imageHref, imageSrc, imageAlt, className, width = 728, height = 90 } = props;
+    return (
+      <a
+        id={id}
+        href={imageHref}
+        target="_blank"
+        rel="noopener sponsored"
+        className={`ad-frame inline-block rounded-md border border-[var(--border)] bg-[color:var(--card)]/80 ${className || ""}`}
+        style={{ width, height }}
+        aria-label="Sponsored"
+      >
+        <img
+          src={imageSrc}
+          alt={imageAlt || "Sponsored"}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", borderRadius: "0.5rem" }}
+        />
+      </a>
+    );
+  }
+
+  // AdSense mode below
+  const {
+    id,
+    adSlot,
+    adClient = DEFAULT_CLIENT,
+    className,
+    width = 728,
+    height = 90,
+    format = "fixed",
+    nonPersonalized,
+    maxViewsPerDay = 8,
+  } = props;
+
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const insRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
@@ -47,24 +88,26 @@ export default function AdSlot({
     }
   }, [id, maxViewsPerDay]);
 
-  // observe visibility
+  // lazy render when visible
   useEffect(() => {
     if (!wrapRef.current || capped) return;
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) {
-        setReady(true);
-        io.disconnect();
-      }
-    }, { rootMargin: "200px" });
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) {
+          setReady(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
     io.observe(wrapRef.current);
     return () => io.disconnect();
   }, [capped]);
 
-  // push ad when visible
+  // push adsense when visible
   useEffect(() => {
     if (!ready || capped || !insRef.current) return;
 
-    // set NPA at runtime if requested
     if (typeof nonPersonalized === "boolean") {
       (window as any).adsbygoogle = (window as any).adsbygoogle || [];
       (window as any).adsbygoogle.requestNonPersonalizedAds = nonPersonalized ? 1 : 0;
@@ -76,21 +119,24 @@ export default function AdSlot({
       // count a view
       const raw = localStorage.getItem(viewsKey(id));
       const cur = raw ? JSON.parse(raw) : { count: 0, ts: Date.now() };
-      const updated = Date.now() - cur.ts > DAY ? { count: 1, ts: Date.now() } : { count: cur.count + 1, ts: cur.ts };
+      const updated =
+        Date.now() - cur.ts > DAY ? { count: 1, ts: Date.now() } : { count: cur.count + 1, ts: cur.ts };
       localStorage.setItem(viewsKey(id), JSON.stringify(updated));
     } catch {
-      // swallow; AdSense might not be ready yet
+      // ignore
     }
   }, [ready, capped, id, nonPersonalized]);
 
-  // size reservation (avoid CLS)
-  const styleFixed = format === "fixed" ? { width, height } : undefined;
+  const reserveStyle =
+    format === "responsive"
+      ? undefined
+      : { width, height }; // fixed box to avoid CLS
 
   return (
     <div
       ref={wrapRef}
-      className={`ad-frame rounded-md border border-[var(--border)] bg-[color:var(--card)]/80 ${className}`}
-      style={styleFixed}
+      className={`ad-frame rounded-md border border-[var(--border)] bg-[color:var(--card)]/80 ${className || ""}`}
+      style={reserveStyle}
       aria-label="Sponsored"
       role="region"
     >
@@ -103,7 +149,6 @@ export default function AdSlot({
           style={format === "responsive" ? { display: "block" } : { display: "inline-block", width, height }}
           data-ad-client={adClient}
           data-ad-slot={adSlot}
-          // responsive unit:
           {...(format === "responsive" ? { "data-ad-format": "auto", "data-full-width-responsive": "true" } : {})}
         />
       )}
