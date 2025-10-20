@@ -155,7 +155,7 @@ function AdRenderer({
     <ins
       className="adsbygoogle block h-full w-full"
       style={{ display: "block" }}
-      data-ad-client="ca-pub-xxxxxxxxxxxxxxxx"
+      data-ad-client="ca-pub-9455100130460173"
       data-ad-slot="1234567890"
       data-ad-format="auto"
       data-full-width-responsive="true"
