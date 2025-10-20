@@ -26,7 +26,6 @@ export default function ToolGrid({ injectEvery = 8 }: { injectEvery?: number }) 
           key={`ad-${i}`}
           className="col-span-1 sm:col-span-2 lg:col-span-3 xl:col-span-4 flex justify-center"
         >
-          <AdSlot id={`grid-mid-${i}`} width={970} height={90} render="adsense" />
         </div>
       );
     }

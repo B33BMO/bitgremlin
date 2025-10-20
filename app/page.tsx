@@ -2,7 +2,6 @@ import Navbar from "@/components/Navbar";
 import ToolGrid from "@/components/ToolGrid";
 import Footer from "@/components/Footer";
 import Link from "next/link";
-import AdSlot from "@/components/ads/AdSlot";
 
 export default function Page() {
   return (
@@ -31,40 +30,8 @@ export default function Page() {
 
         {/* ad: below hero (desktop size) */}
 {/* below hero */}
-<div className="mt-10 flex justify-center px-4">
-  <div className="hidden md:block">
-    <AdSlot render="adsense" id="hero-below-1" adSlot="1234567890" width={970} height={90} />
-  </div>
-  <div className="md:hidden">
-    <AdSlot render="adsense" id="hero-below-mobile" adSlot="1234567891" width={320} height={50} />
-  </div>
-</div>
 
-{/* house/affiliate banners */}
-<div className="mt-16 flex justify-center px-4">
-  <div className="hidden md:block">
-    <AdSlot
-      render="image"
-      id="footer-top-affiliate"
-      width={970}
-      height={90}
-      imageHref="https://your-affiliate-link"
-      imageSrc="/ads/affiliate-banner-970x90.jpg"
-      imageAlt="Partner"
-    />
-  </div>
-  <div className="md:hidden">
-    <AdSlot
-      render="image"
-      id="footer-top-affiliate-m"
-      width={300}
-      height={250}
-      imageHref="https://your-affiliate-link"
-      imageSrc="/ads/affiliate-300x250.jpg"
-      imageAlt="Partner"
-    />
-  </div>
-</div>
+
 
 
         <ToolGrid />
@@ -72,26 +39,10 @@ export default function Page() {
         {/* affiliate/house ad above footer */}
         <div className="mt-16 flex justify-center px-4">
           <div className="hidden md:block">
-            <AdSlot
-              id="footer-top-affiliate"
-              width={970}
-              height={90}
-              render="image"
-              imageHref="https://your-affiliate-link"
-              imageSrc="/ads/affiliate-banner-970x90.jpg"
-              imageAlt="Partner"
-            />
+
           </div>
           <div className="md:hidden">
-            <AdSlot
-              id="footer-top-affiliate-m"
-              width={300}
-              height={250}
-              render="image"
-              imageHref="https://your-affiliate-link"
-              imageSrc="/ads/affiliate-300x250.jpg"
-              imageAlt="Partner"
-            />
+
           </div>
         </div>
       </main>
